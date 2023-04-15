@@ -7,6 +7,10 @@ namespace BH.Components
 {
 	public sealed class InputPawnLocal : IInputPawn
 	{
+		private const string ID_ACTION_MOVE_S = "Move";
+		private const string ID_ACTION_LOOK_S = "Look";
+		private const string ID_ACTION_FIRE_S = "Fire";
+
 		private Action<InputAction.CallbackContext> _actionMovePerformed;
 		private Action<InputAction.CallbackContext> _actionMoveCanceled;
 		private Action<InputAction.CallbackContext> _actionLookPerformed;
@@ -24,19 +28,19 @@ namespace BH.Components
 		public void Enable()
 		{
 			_actionFirePerformed = OnFirePerformed;
-			_component.InputComponent.currentActionMap[Definitions.ID_ACTION_FIRE_S].performed += _actionFirePerformed;
+			_component.InputComponent.currentActionMap[ID_ACTION_FIRE_S].performed += _actionFirePerformed;
 			_actionFireCanceled = OnFireCanceled;
-			_component.InputComponent.currentActionMap[Definitions.ID_ACTION_FIRE_S].canceled += _actionFireCanceled;
+			_component.InputComponent.currentActionMap[ID_ACTION_FIRE_S].canceled += _actionFireCanceled;
 
 			_actionLookPerformed = OnLookPerformed;
-			_component.InputComponent.currentActionMap[Definitions.ID_ACTION_LOOK_S].performed += _actionLookPerformed;
+			_component.InputComponent.currentActionMap[ID_ACTION_LOOK_S].performed += _actionLookPerformed;
 			_actionLookCanceled = OnLookCanceled;
-			_component.InputComponent.currentActionMap[Definitions.ID_ACTION_LOOK_S].canceled += _actionLookCanceled;
+			_component.InputComponent.currentActionMap[ID_ACTION_LOOK_S].canceled += _actionLookCanceled;
 
 			_actionMovePerformed = OnMovePerformed;
-			_component.InputComponent.currentActionMap[Definitions.ID_ACTION_MOVE_S].performed += _actionMovePerformed;
+			_component.InputComponent.currentActionMap[ID_ACTION_MOVE_S].performed += _actionMovePerformed;
 			_actionMoveCanceled = OnMoveCanceled;
-			_component.InputComponent.currentActionMap[Definitions.ID_ACTION_MOVE_S].canceled += _actionMoveCanceled;
+			_component.InputComponent.currentActionMap[ID_ACTION_MOVE_S].canceled += _actionMoveCanceled;
 
 			_component.InputComponent.ActivateInput();
 		}
@@ -47,19 +51,19 @@ namespace BH.Components
 
 			if(_component.InputComponent.currentActionMap != null)
 			{
-				_component.InputComponent.currentActionMap[Definitions.ID_ACTION_FIRE_S].performed -= _actionFirePerformed;
+				_component.InputComponent.currentActionMap[ID_ACTION_FIRE_S].performed -= _actionFirePerformed;
 				_actionFirePerformed = null;
-				_component.InputComponent.currentActionMap[Definitions.ID_ACTION_FIRE_S].canceled -= _actionFireCanceled;
+				_component.InputComponent.currentActionMap[ID_ACTION_FIRE_S].canceled -= _actionFireCanceled;
 				_actionFireCanceled = null;
 
-				_component.InputComponent.currentActionMap[Definitions.ID_ACTION_LOOK_S].performed -= _actionLookPerformed;
+				_component.InputComponent.currentActionMap[ID_ACTION_LOOK_S].performed -= _actionLookPerformed;
 				_actionLookPerformed = null;
-				_component.InputComponent.currentActionMap[Definitions.ID_ACTION_LOOK_S].canceled -= _actionLookCanceled;
+				_component.InputComponent.currentActionMap[ID_ACTION_LOOK_S].canceled -= _actionLookCanceled;
 				_actionLookCanceled = null;
 
-				_component.InputComponent.currentActionMap[Definitions.ID_ACTION_MOVE_S].performed -= _actionMovePerformed;
+				_component.InputComponent.currentActionMap[ID_ACTION_MOVE_S].performed -= _actionMovePerformed;
 				_actionMovePerformed = null;
-				_component.InputComponent.currentActionMap[Definitions.ID_ACTION_MOVE_S].canceled -= _actionMoveCanceled;
+				_component.InputComponent.currentActionMap[ID_ACTION_MOVE_S].canceled -= _actionMoveCanceled;
 				_actionMoveCanceled = null;
 			}
 

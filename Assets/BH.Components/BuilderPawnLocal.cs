@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using BH.Model;
+using UnityEngine;
 using UnityEngine.Rendering.Universal;
 
 namespace BH.Components
@@ -7,8 +8,8 @@ namespace BH.Components
 	{
 		public CompPawn Build(Transform parent, CxOrigin origin)
 		{
-			var result = Definitions.LoadAsset<CompPawn>(
-				Definitions.ID_RESOURCE_PAWN_LOCAL_S,
+			var result = Singleton<ServiceResources>.I.LoadAssetAsResources<CompPawn>(
+				ServiceResources.ID_RESOURCE_PAWN_LOCAL_S,
 				parent,
 				origin);
 
@@ -24,7 +25,7 @@ namespace BH.Components
 			var dataPawn = result.Camera.GetUniversalAdditionalCameraData();
 			dataPawn.renderType = CameraRenderType.Overlay;
 			var dataMain = Camera.main.GetUniversalAdditionalCameraData();
-			dataMain.cameraStack.Add(result.Camera);
+			dataMain.cameraStack.Insert(0, result.Camera);
 			result.Camera.gameObject.SetActive(true);
 			result.CameraAnchor = result.Camera.transform.localPosition;
 

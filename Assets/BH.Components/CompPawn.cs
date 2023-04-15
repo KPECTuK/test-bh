@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mirror;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.InputSystem;
@@ -11,12 +12,14 @@ namespace BH.Components
 	[RequireComponent(typeof(Rigidbody))]
 	[RequireComponent(typeof(PlayerInput))]
 	[RequireComponent(typeof(NavMeshAgent))]
+	//[RequireComponent(typeof(NetworkIdentity))]
 	public class CompPawn : MonoBehaviour
 	{
 		public Transform View;
 		public Camera Camera;
 		public SettingsPawn Settings;
 
+		//[NonSerialized] public NetworkIdentity Identity;
 		[NonSerialized] public NavMeshAgent Agent;
 		[NonSerialized] public PlayerInput InputComponent;
 		[NonSerialized] public IBuilderAsset<CompPawn> Builder;
@@ -86,6 +89,7 @@ namespace BH.Components
 
 		private void Awake()
 		{
+			//Identity = GetComponent<NetworkIdentity>();
 			Agent = GetComponent<NavMeshAgent>();
 			InputComponent = GetComponent<PlayerInput>();
 		}

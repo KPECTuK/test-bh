@@ -8,7 +8,7 @@ using System.Reflection;
 namespace BH.Components
 {
 	[CreateAssetMenu(menuName = "Create Settings Pawn", fileName = "settings_pawn", order = 0)]
-	public class SettingsPawn : ScriptableObject
+	public sealed class SettingsPawn : ScriptableObject
 	{
 		[Range(.01f, 10f)] public float MaxSpeedMove = 2f;
 		[Range(.01f, 10f)] public float MaxSpeedStrafe = 2f;

@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using BH.Model;
+using UnityEngine;
 
 namespace BH.Components
 {
@@ -6,8 +7,8 @@ namespace BH.Components
 	{
 		public CompPawn Build(Transform parent, CxOrigin origin)
 		{
-			var result = Definitions.LoadAsset<CompPawn>(
-				Definitions.ID_RESOURCE_PAWN_REMOTE_S,
+			var result = Singleton<ServiceResources>.I.LoadAssetAsResources<CompPawn>(
+				ServiceResources.ID_RESOURCE_PAWN_REMOTE_S,
 				parent,
 				origin);
 

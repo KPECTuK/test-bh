@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿using System;
+using BH.Model;
+using UnityEngine;
 
 namespace BH.Components
 {
@@ -6,8 +8,8 @@ namespace BH.Components
 	{
 		public CompPawn Build(Transform parent, CxOrigin origin)
 		{
-			var result = Definitions.LoadAsset<CompPawn>(
-				Definitions.ID_RESOURCE_PAWN_LOBBY_S,
+			var result = Singleton<ServiceResources>.I.LoadAssetAsResources<CompPawn>(
+				ServiceResources.ID_RESOURCE_PAWN_LOBBY_S,
 				parent,
 				origin);
 
@@ -23,7 +25,7 @@ namespace BH.Components
 
 		public void Destroy(CompPawn instance)
 		{
-			throw new System.NotImplementedException();
+			throw new NotImplementedException();
 		}
 	}
 }
