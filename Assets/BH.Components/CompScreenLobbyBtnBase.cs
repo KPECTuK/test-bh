@@ -14,5 +14,7 @@ namespace BH.Components
 		[NonSerialized] public Vector3 PositionLocalTarget;
 
 		public abstract bool IsModel(object model);
+
+		public abstract void UpdateView();
 	}
 }

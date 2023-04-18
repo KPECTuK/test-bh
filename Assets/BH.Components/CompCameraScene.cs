@@ -7,20 +7,22 @@ namespace BH.Components
 	[RequireComponent(typeof(Camera))]
 	public class CompCameraScene : MonoBehaviour, ISceneCamera
 	{
-		public Camera ControllerCamera { get; private set; }
-		public uint IdCorresponding { get; } = 0;
+		// TODO: implement barrage
+
+		public CxId Id { get; private set; }
+		public Camera CompCamera { get; private set; }
 
 		private void Awake()
 		{
-			ControllerCamera = GetComponent<Camera>();
+			CompCamera = GetComponent<Camera>();
 
-			var data = ControllerCamera.GetUniversalAdditionalCameraData();
+			var data = CompCamera.GetUniversalAdditionalCameraData();
 			data.renderType = CameraRenderType.Overlay;
 		}
 
 		private void OnEnable()
 		{
-			Singleton<ServiceCameras>.I.RegisterCamera(this);
+			Id = Singleton<ServiceCameras>.I.RegisterCamera(this);
 		}
 
 		private void OnDisable()

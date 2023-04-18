@@ -7,39 +7,37 @@ using UnityEditor;
 
 namespace BH.Components
 {
-	[RequireComponent(typeof(CompNetwork))]
+	[RequireComponent(typeof(CompNetworkManager))]
 	[RequireComponent(typeof(KcpTransport))]
+	[RequireComponent(typeof(CompNetworkDiscovery))]
 	public class CompApp : MonoBehaviour
 	{
-		//private CompPawn _local;
-
 		private void Awake()
 		{
-			Screen.fullScreen = true;
+			//Screen.fullScreen = true;
 			Application.targetFrameRate = 60;
+			Screen.SetResolution(960, 540, false);
 
 			Singleton<ServiceResources>.I.Reset();
 			Singleton<ServiceCameras>.I.Reset();
 			Singleton<ServiceUI>.I.Reset();
 			Singleton<ServiceNetwork>.I.Reset();
-
-			//_local = ServiceResources.BuildPawn<BuilderPawnLocal>(null, new CxOrigin());
+			Singleton<ServicePawns>.I.Reset();
 
 			"initialized: app".Log();
 		}
 
 		private void OnDestroy()
 		{
-			//_local.Builder.Destroy(_local);
-
 			// TODO: separate script: the execution order to use
 
+			Singleton<ServicePawns>.Dispose();
 			Singleton<ServiceNetwork>.Dispose();
 			Singleton<ServiceUI>.Dispose();
 			Singleton<ServiceCameras>.Dispose();
 			Singleton<ServiceResources>.Dispose();
 
-			Screen.fullScreen = false;
+			//Screen.fullScreen = false;
 
 			"disposed".Log();
 		}
@@ -54,6 +52,27 @@ namespace BH.Components
 				Application.Quit();
 				#endif
 			}
+
+			while(Singleton<ServiceNetwork>.I.Events.TryPeek(out var @event))
+			{
+				TryRunCommand(@event);
+			}
+		}
+
+		private void TryRunCommand(ICommand<CompApp> @event)
+		{
+			if(@event.Assert(this))
+			{
+				$"running network command: {@event.GetType().NameNice()}".Log();
+
+				@event.Execute(this);
+			}
+			else
+			{
+				$"skip network command due conditions: {@event.GetType().NameNice()}".LogWarning();
+			}
+
+			Singleton<ServiceNetwork>.I.Events.Dequeue();
 		}
 	}
 }

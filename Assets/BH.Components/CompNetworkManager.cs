@@ -2,10 +2,20 @@ using Mirror;
 
 namespace BH.Components
 {
-	public class CompNetwork : NetworkManager
+	public class CompNetworkManager : NetworkManager
 	{
+		// Mirror need to be refactored
+		// causes:
+		// - not strict model, responsibilities are blurred
+		// - structurally unreadable (this singleton for example), cannot be assembled for the project needs
+		// - legacy should be removed
+		// - unrelated function should be removed (scene/asset management for example)
+		// - too many comments inside btw.
+		// - serialization protocol can be more efficient
+		// - aspects, probably, no need
+
 		// ReSharper disable once InconsistentNaming
-		public new static CompNetwork singleton { get; private set; }
+		public new static CompNetworkManager singleton { get; private set; }
 
 		public override void Awake()
 		{

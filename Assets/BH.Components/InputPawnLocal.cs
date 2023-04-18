@@ -113,4 +113,18 @@ namespace BH.Components
 
 		private void OnFireCanceled(InputAction.CallbackContext context) { }
 	}
+
+	public sealed class InputPawnRemote : IInputPawn
+	{
+		private readonly CompPawn _component;
+
+		public InputPawnRemote(CompPawn component)
+		{
+			_component = component;
+		}
+
+		public void Enable() { }
+
+		public void Disable() { }
+	}
 }

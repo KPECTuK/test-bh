@@ -8,6 +8,9 @@ namespace BH.Components
 	[RequireComponent(typeof(RectTransform))]
 	public class CompScreenLobbyCtrlBar : MonoBehaviour
 	{
+		//? bar is focused on users (? observer switchable)
+		// TODO: TL; TI; use view modes to display server modes, so can get rid of commands from ServiceNetwork
+
 		[Range(0f, 3f)] public float ButtonSpeedSlideSec = 1f;
 		[Range(0f, 1f)] public float ButtonSpeedScaleSec = .2f;
 
@@ -52,6 +55,8 @@ namespace BH.Components
 				component.PositionLocalTarget += stepNormalized * _buttons[index].SizeLocalInitial.x;
 			}
 
+			component.UpdateView();
+
 			_buttons.Add(component);
 		}
 
@@ -86,7 +91,7 @@ namespace BH.Components
 			_tasks.Enqueue(task);
 		}
 
-		public IEnumerator TaskAppendButtonAnim(ModelViewButtonServer model)
+		public IEnumerator TaskAppendButtonAnim(ModelViewServer model)
 		{
 			var load = Singleton<ServiceResources>.I.LoadAssetAsLibrary<CompScreenLobbyBtnServer>(
 				ServiceResources.ID_RESOURCE_UI_LOBBY_ITEM_SERVER_S,
@@ -95,11 +100,12 @@ namespace BH.Components
 
 			load.Model = model;
 			ButtonWidgetInit(load);
+			load.OnClick = OnButtonItem;
 
 			yield break;
 		}
 
-		public IEnumerator TaskAppendButtonAnim(ModelViewButtonUser model)
+		public IEnumerator TaskAppendButtonAnim(ModelViewUser model)
 		{
 			var load = Singleton<ServiceResources>.I.LoadAssetAsLibrary<CompScreenLobbyBtnUser>(
 				ServiceResources.ID_RESOURCE_UI_LOBBY_ITEM_USER_S,
@@ -108,19 +114,44 @@ namespace BH.Components
 
 			load.Model = model;
 			ButtonWidgetInit(load);
+			load.OnClick = OnButtonItem;
 
 			yield break;
 		}
 
-		public IEnumerator TaskRemoveButtonAnim(ModelViewButtonServer model)
+		public IEnumerator TaskUpdateButtonAnim(ModelViewServer model)
 		{
 			var button = _buttons.Find(_ => _.IsModel(model));
+			if(button != null)
+			{
+				button.UpdateView();
+			}
+
+			yield break;
+		}
+
+		public IEnumerator TaskUpdateButtonAnim(ModelViewUser model)
+		{
+			var button = _buttons.Find(_ => _.IsModel(model));
+			if(button != null)
+			{
+				button.UpdateView();
+			}
+
+			yield break;
+		}
+
+		public IEnumerator TaskRemoveButtonAnim(ModelViewServer model)
+		{
+			var button = _buttons.Find(_ => _.IsModel(model)) as CompScreenLobbyBtnServer;
 			if(button == null)
 			{
-				$"not found: {model}".Log();
+				$"button is not found (server): {model.IdHost}".LogWarning();
 
 				yield break;
 			}
+
+			button.OnClick = null;
 
 			var current = 1f;
 			var transformWidget = button.GroupScale;
@@ -136,15 +167,17 @@ namespace BH.Components
 			Destroy(button.gameObject);
 		}
 
-		public IEnumerator TaskRemoveButtonAnim(ModelViewButtonUser model)
+		public IEnumerator TaskRemoveButtonAnim(ModelViewUser model)
 		{
-			var button = _buttons.Find(_ => _.IsModel(model));
+			var button = _buttons.Find(_ => _.IsModel(model)) as CompScreenLobbyBtnUser;
 			if(button == null)
 			{
-				$"not found: {model}".Log();
+				$"button is not found (user): {model.IdUser}".LogWarning();
 
 				yield break;
 			}
+
+			button.OnClick = null;
 
 			var current = 1f;
 			var transformWidget = button.GroupScale;
@@ -158,7 +191,16 @@ namespace BH.Components
 
 			_buttons.Remove(button);
 			Destroy(button.gameObject);
-			Singleton<ServiceUI>.I.ModelsUser.Remove(model);
+		}
+
+		public IEnumerator TaskUpdateFocus()
+		{
+			for(var index = 0; index < _buttons.Count; index++)
+			{
+				_buttons[index].UpdateView();
+			}
+
+			yield break;
 		}
 
 		private void Update()
@@ -178,6 +220,30 @@ namespace BH.Components
 			#if UNITY_EDITOR
 			DrawGizmo();
 			#endif
+		}
+
+		private void OnButtonItem(ModelViewServer model)
+		{
+			"press: 'Server'".Log();
+			
+			var modelUser = Singleton<ServiceUI>.I.ModelsUser
+				.GetById(Singleton<ServiceNetwork>.I.IdCurrentUser);
+			modelUser.IdAtHost = model.IdHost;
+
+			Schedule(TaskUpdateFocus());
+
+			Singleton<ServicePawns>.I.Events.Enqueue(
+				new CmdPawnLobbySetChangeTo
+				{
+					Model = model,
+				});
+		}
+
+		private void OnButtonItem(ModelViewUser model)
+		{
+			"press: 'User'".Log();
+
+			// TODO: remove user from participants
 		}
 
 		#if UNITY_EDITOR

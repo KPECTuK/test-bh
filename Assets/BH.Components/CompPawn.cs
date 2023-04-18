@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using Mirror;
+using BH.Model;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.InputSystem;
@@ -13,6 +13,7 @@ namespace BH.Components
 	[RequireComponent(typeof(PlayerInput))]
 	[RequireComponent(typeof(NavMeshAgent))]
 	//[RequireComponent(typeof(NetworkIdentity))]
+	//[RequireComponent(typeof(NetworkTransform))]
 	public class CompPawn : MonoBehaviour
 	{
 		public Transform View;
@@ -28,6 +29,10 @@ namespace BH.Components
 		[NonSerialized] public Vector3 InputSharedMove;
 		[NonSerialized] public float InputSharedTurn;
 		[NonSerialized] public float InputSharedPitch;
+
+		[NonSerialized] public Vector3 CameraAnchor;
+
+		[NonSerialized] public CxId IdModel;
 
 		//? sync source
 		private readonly Stack<IDriverPawn> _driver = new();
@@ -50,6 +55,27 @@ namespace BH.Components
 		public void Pop()
 		{
 			_driver.Pop();
+		}
+
+		public void SetFeatures(CxId idFeature)
+		{
+			$"pawn feature set: {idFeature}".Log();
+
+			// roughly, now means: game owner
+			if(idFeature.IsEmpty)
+			{
+				View.GetComponent<Renderer>().material.color = Settings.Features[0].PawnColor;
+			}
+			else
+			{
+				for(var index = 0; index < Settings.Features.Length; index++)
+				{
+					if(Settings.Features[index].IdFeature == idFeature)
+					{
+						View.GetComponent<Renderer>().material.color = Settings.Features[index].PawnColor;
+					}
+				}
+			}
 		}
 
 		#if UNITY_EDITOR
@@ -84,8 +110,6 @@ namespace BH.Components
 
 		public GizmoData GizmoShared = GizmoData.Create();
 		#endif
-
-		[NonSerialized] public Vector3 CameraAnchor;
 
 		private void Awake()
 		{

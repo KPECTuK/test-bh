@@ -20,3 +20,16 @@ MonoBehaviour:
   PitchMaxDeg: 60
   MaxUltSpeed: 4
   MaxUltDistance: 2
+  Features:
+  - IdFeature:
+      _id: 4f331d42aeae1a45b4063ee719dddb1d
+    PawnColor: {r: 1, g: 0.84843576, b: 0, a: 1}
+  - IdFeature:
+      _id: 95b2649f261fba4fb6ad222eda2e08c3
+    PawnColor: {r: 0.6617775, g: 0, b: 1, a: 1}
+  - IdFeature:
+      _id: 1df95558c6964246a753e53cda19294e
+    PawnColor: {r: 0.011712074, g: 1, b: 0, a: 1}
+  - IdFeature:
+      _id: 7ae0c6f02a6eec48b8186d612e4348a5
+    PawnColor: {r: 0, g: 0.46326447, b: 1, a: 1}

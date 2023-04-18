@@ -1,17 +1,9 @@
-﻿using System;
-
-namespace BH.Components
+﻿namespace BH.Components
 {
 	public sealed class DriverPawnLobby : IDriverPawn
 	{
-		public void Update()
-		{
-			throw new NotImplementedException();
-		}
+		public void Update() { }
 
-		public void DrawGizmo()
-		{
-			throw new NotImplementedException();
-		}
+		public void DrawGizmo() { }
 	}
 }

@@ -8,11 +8,9 @@ namespace BH.Components
 {
 	public class ServiceCameras : IService
 	{
-		private readonly List<ISceneCamera> _camerasOrder = new();
+		private readonly List<(CxId id, ISceneCamera handle)> _cameras = new();
 
 		public Camera CameraAssembler => Camera.main;
-
-		public ISceneCamera Spectator { get; private set; }
 
 		public void Reset()
 		{
@@ -25,79 +23,119 @@ namespace BH.Components
 		{
 			// manageable, due Singleton generic routine
 
-			_camerasOrder.Clear();
+			_cameras.Clear();
 		}
 
-		public void RegisterCamera(ISceneCamera source)
+		public CxId RegisterCamera(ISceneCamera source)
 		{
-			if(source != null)
+			if(source == null)
 			{
-				_camerasOrder.Add(source);
-				var data = source.ControllerCamera.GetUniversalAdditionalCameraData();
-				data.renderType = CameraRenderType.Overlay;
-
-				$"camera is registered: {(source as Component).name}".Log();
+				throw new Exception("can't register camera of null object");
 			}
+
+			var pair = (id: CxId.Create(), handle: source);
+			_cameras.Add(pair);
+			var data = source.CompCamera.GetUniversalAdditionalCameraData();
+			data.renderType = CameraRenderType.Overlay;
+
+			var name = source is Component cast ? cast.name : "unknown";
+			$"camera is registered: {name} [{pair.id}]".Log();
+
+			return pair.id;
 		}
 
 		public void UnregisterCamera(ISceneCamera source)
 		{
-			if(_camerasOrder.Remove(source))
+			var index = 0;
+			for(; index < _cameras.Count; index++)
 			{
-				$"camera is unregistered: {(source as Component).name}".Log();
-			}
-		}
-
-		/// <summary> round robin scene cameras </summary>
-		public void SetSpectator()
-		{
-			ISceneCamera spectator = null;
-			for(var index = 0; index < _camerasOrder.Count; index++)
-			{
-				if(_camerasOrder[index] is CompCameraScene cast)
+				if(ReferenceEquals(_cameras[index].handle, source))
 				{
-					spectator = cast;
-					_camerasOrder.RemoveAt(index);
 					break;
 				}
 			}
 
-			if(spectator == null)
+			var name = source is Component cast ? cast.name : "unknown";
+			if(index == _cameras.Count)
+			{
+				throw new Exception($"camera not found, by reference: {name}");
+			}
+
+			var pair = _cameras[index];
+			_cameras.RemoveAt(index);
+
+			$"camera is unregistered: {name} [{pair.id}]".Log();
+		}
+
+		public void UnregisterCamera(CxId id)
+		{
+			var index = 0;
+			for(; index < _cameras.Count; index++)
+			{
+				if(_cameras[index].id == id)
+				{
+					break;
+				}
+			}
+
+			if(index == _cameras.Count)
+			{
+				throw new Exception($"camera not found, by id: {id}");
+			}
+
+			var pair = _cameras[index];
+			_cameras.RemoveAt(index);
+
+			var name = pair.handle is Component cast ? cast.name : "unknown";
+			$"camera is unregistered: {name} [{pair.id}]".Log();
+		}
+
+		public void SetSpectator()
+		{
+			(CxId id, ISceneCamera handle) pair = default;
+			var index = 0;
+			for(; index < _cameras.Count; index++)
+			{
+				if(_cameras[index].handle is CompCameraScene)
+				{
+					pair = _cameras[index];
+					_cameras.RemoveAt(index);
+					break;
+				}
+			}
+
+			if(index == _cameras.Count)
 			{
 				throw new Exception("no scene camera found in scene");
 			}
 
-			_camerasOrder.Add(spectator);
+			_cameras.Add(pair);
 
-			ActivateCamera(spectator);
+			ActivateCamera(pair.handle);
 		}
 
-		/// <summary> enable camera by id or scene camera round robin if id is zero </summary>
-		public void SetSpectator(uint idCamera)
+		public void SetSpectator(CxId idCamera)
 		{
-			if(idCamera == 0)
+			if(idCamera.IsEmpty)
 			{
 				SetSpectator();
 			}
 			else
 			{
-				ISceneCamera spectator = null;
-				for(var index = 0; index < _camerasOrder.Count; index++)
+				for(var index = 0; index < _cameras.Count; index++)
 				{
-					if(_camerasOrder[index].IdCorresponding == idCamera)
+					if(_cameras[index].id == idCamera)
 					{
-						spectator = _camerasOrder[index];
-						break;
+						ActivateCamera(_cameras[index].handle);
+						return;
 					}
 				}
-
-				ActivateCamera(spectator);
 			}
 		}
 
 		private void ActivateCamera(ISceneCamera spectator)
 		{
-			// TODO: implement accordingly to the renderer implementation
+			// NOTE: implement accordingly to the renderer implementation
 
 			if(spectator == null)
 			{
@@ -105,18 +143,13 @@ namespace BH.Components
 			}
 
 			var dataAssembler = CameraAssembler.GetUniversalAdditionalCameraData();
-			for(var index = 0; index < _camerasOrder.Count; index++)
+			for(var index = 0; index < _cameras.Count; index++)
 			{
-				dataAssembler.cameraStack.Remove(_camerasOrder[index].ControllerCamera);
+				dataAssembler.cameraStack.Remove(_cameras[index].handle.CompCamera);
 			}
 
-			{
-				var camera = spectator.ControllerCamera.GetComponent<Camera>();
-				//var dataOverlay = camera.GetUniversalAdditionalCameraData();
-				//dataOverlay.renderType = CameraRenderType.Overlay;
-				//camera.depth = 0;
-				dataAssembler.cameraStack.Insert(0, camera);
-			}
+			var camera = spectator.CompCamera.GetComponent<Camera>();
+			dataAssembler.cameraStack.Insert(0, camera);
 		}
 	}
 }

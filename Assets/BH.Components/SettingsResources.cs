@@ -11,6 +11,7 @@ namespace BH.Components
 	{
 		public RectTransform ProtoItemServer;
 		public RectTransform ProtoItemUser;
+		public SettingsPawn SettingsPawn;
 
 		#if UNITY_EDITOR
 		private void OnValidate()

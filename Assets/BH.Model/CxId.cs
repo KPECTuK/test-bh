@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using Mirror;
 using UnityEngine;
 
 namespace BH.Model
@@ -30,7 +31,7 @@ namespace BH.Model
 		[FieldOffset(13)] private byte _13;
 		[FieldOffset(14)] private byte _14;
 		[FieldOffset(15)] private byte _15;
-		[FieldOffset(SIZE_I)] private readonly int _hash;
+		[FieldOffset(SIZE_I)] private int _hash;
 
 		public bool IsEmpty => Compare(ref this, ref Empty);
 
@@ -133,6 +134,49 @@ namespace BH.Model
 		public static implicit operator CxId(Guid guid)
 		{
 			return new(guid);
+		}
+
+		public static void WriteTo(NetworkWriter target, ref CxId source)
+		{
+			target.WriteByte(source._00);
+			target.WriteByte(source._01);
+			target.WriteByte(source._02);
+			target.WriteByte(source._03);
+			target.WriteByte(source._04);
+			target.WriteByte(source._05);
+			target.WriteByte(source._06);
+			target.WriteByte(source._07);
+			target.WriteByte(source._08);
+			target.WriteByte(source._09);
+			target.WriteByte(source._10);
+			target.WriteByte(source._11);
+			target.WriteByte(source._12);
+			target.WriteByte(source._13);
+			target.WriteByte(source._14);
+			target.WriteByte(source._15);
+		}
+
+		public static CxId ReadFrom(NetworkReader source)
+		{
+			CxId target = default;
+			target._00 = source.ReadByte();
+			target._01 = source.ReadByte();
+			target._02 = source.ReadByte();
+			target._03 = source.ReadByte();
+			target._04 = source.ReadByte();
+			target._05 = source.ReadByte();
+			target._06 = source.ReadByte();
+			target._07 = source.ReadByte();
+			target._08 = source.ReadByte();
+			target._09 = source.ReadByte();
+			target._10 = source.ReadByte();
+			target._11 = source.ReadByte();
+			target._12 = source.ReadByte();
+			target._13 = source.ReadByte();
+			target._14 = source.ReadByte();
+			target._15 = source.ReadByte();
+			target._hash = target.GetHashCode();
+			return target;
 		}
 	}
 }

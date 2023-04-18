@@ -14,3 +14,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   ProtoItemServer: {fileID: 8135470942553640318, guid: fd87a7cbfcda14a4094a7ba26c7b201d, type: 3}
   ProtoItemUser: {fileID: 7050925519718552515, guid: 2bd05b88fe793a6409112932dba353dd, type: 3}
+  SettingsPawn: {fileID: 11400000, guid: 1301436dae8b73d4bb02703f68936a99, type: 2}

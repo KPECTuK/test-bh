@@ -11,18 +11,22 @@ namespace BH.Components.Editor
 	[CustomEditor(typeof(CompScreens))]
 	public class DrawerCompScreens : UnityEditor.Editor
 	{
-		private enum ServerMode
+		private enum NetworkMode
 		{
-			ServerDisabled,
-			ServerEnabled,
-			Game,
+			Disabled,
+			LobbyClient,
+			LobbyServer,
+			GameClient,
+			GameServer,
 		}
 
-		private readonly List<(Type type, ServerMode mark)> _map = new()
+		private readonly List<(Type type, NetworkMode mark)> _map = new()
 		{
-			(typeof(ServerModeDisabled), ServerMode.ServerDisabled),
-			(typeof(ServerModeLobby), ServerMode.ServerEnabled),
-			(typeof(ServerModeGame), ServerMode.Game),
+			(typeof(NetworkModeDisabled), NetworkMode.Disabled),
+			(typeof(NetworkModeLobbyClient), NetworkMode.LobbyClient),
+			(typeof(NetworkModeLobbyServer), NetworkMode.LobbyServer),
+			(typeof(NetworkModeGameAsClient), NetworkMode.GameClient),
+			(typeof(NetworkModeGameAsServer), NetworkMode.GameServer),
 		};
 
 		private readonly string[] _names =
@@ -53,29 +57,29 @@ namespace BH.Components.Editor
 		{
 			ICommand<CompScreens> command = null;
 			
-			if(Singleton<ServiceNetwork>.I.ServerModeShared.GetType() == typeof(ServerModeDisabled))
+			if(Singleton<ServiceNetwork>.I.NetworkModeShared.GetType() == typeof(NetworkModeDisabled))
 			{
-				command = new CmdViewLobbyAppendServer()
+				command = new CmdViewLobbyServerAppend()
 				{
-					Model = new ModelViewButtonServer(),
+					Model = new ModelViewServer(),
 				};
 			}
 			
-			if(Singleton<ServiceNetwork>.I.ServerModeShared.GetType() == typeof(ServerModeLobby))
+			if(Singleton<ServiceNetwork>.I.NetworkModeShared.GetType() == typeof(NetworkModeLobbyClient))
 			{
-				command = new CmdViewLobbyAppendUser()
+				command = new CmdViewLobbyUserAppend()
 				{
-					Model = new ModelViewButtonUser(),
+					Model = new ModelViewUser(),
 				};
 			}
 
 			if(command != null)
 			{
-				Singleton<ServiceUI>.I.EventsView.Enqueue(command);
+				Singleton<ServiceUI>.I.Events.Enqueue(command);
 			}
 			else
 			{
-				$"no command for state: {Singleton<ServiceNetwork>.I.ServerModeShared.GetType().NameNice()}".LogWarning();
+				$"no command for state: {Singleton<ServiceNetwork>.I.NetworkModeShared.GetType().NameNice()}".LogWarning();
 			}
 
 		}
@@ -84,17 +88,17 @@ namespace BH.Components.Editor
 		{
 			ICommand<CompScreens> command = null;
 			
-			if(Singleton<ServiceNetwork>.I.ServerModeShared.GetType() == typeof(ServerModeDisabled))
+			if(Singleton<ServiceNetwork>.I.NetworkModeShared.GetType() == typeof(NetworkModeDisabled))
 			{
-				command = new CmdViewLobbyRemoveServer()
+				command = new CmdViewLobbyServerRemove()
 				{
 					Model = Singleton<ServiceUI>.I.ModelsServer.FirstOrDefault(),
 				};
 			}
 			
-			if(Singleton<ServiceNetwork>.I.ServerModeShared.GetType() == typeof(ServerModeLobby))
+			if(Singleton<ServiceNetwork>.I.NetworkModeShared.GetType() == typeof(NetworkModeLobbyClient))
 			{
-				command = new CmdViewLobbyRemoveUser()
+				command = new CmdViewLobbyUserRemove()
 				{
 					Model = Singleton<ServiceUI>.I.ModelsUser.FirstOrDefault(),
 				};
@@ -102,11 +106,11 @@ namespace BH.Components.Editor
 
 			if(command != null)
 			{
-				Singleton<ServiceUI>.I.EventsView.Enqueue(command);
+				Singleton<ServiceUI>.I.Events.Enqueue(command);
 			}
 			else
 			{
-				$"no command for state: {Singleton<ServiceNetwork>.I.ServerModeShared.GetType().NameNice()}".LogWarning();
+				$"no command for state: {Singleton<ServiceNetwork>.I.NetworkModeShared.GetType().NameNice()}".LogWarning();
 			}
 		}
 
@@ -114,13 +118,13 @@ namespace BH.Components.Editor
 		{
 			ICommand<CompScreens> command = null;
 			
-			if(Singleton<ServiceNetwork>.I.ServerModeShared.GetType() == typeof(ServerModeDisabled))
+			if(Singleton<ServiceNetwork>.I.NetworkModeShared.GetType() == typeof(NetworkModeDisabled))
 			{
 				command = new CmdViewLobbyClear()
 					{ };
 			}
 			
-			if(Singleton<ServiceNetwork>.I.ServerModeShared.GetType() == typeof(ServerModeLobby))
+			if(Singleton<ServiceNetwork>.I.NetworkModeShared.GetType() == typeof(NetworkModeLobbyClient))
 			{
 				command = new CmdViewLobbyClear()
 					{ };
@@ -128,11 +132,11 @@ namespace BH.Components.Editor
 
 			if(command != null)
 			{
-				Singleton<ServiceUI>.I.EventsView.Enqueue(command);
+				Singleton<ServiceUI>.I.Events.Enqueue(command);
 			}
 			else
 			{
-				$"no command for state: {Singleton<ServiceNetwork>.I.ServerModeShared.GetType().NameNice()}".LogWarning();
+				$"no command for state: {Singleton<ServiceNetwork>.I.NetworkModeShared.GetType().NameNice()}".LogWarning();
 			}
 		}
 
@@ -159,16 +163,16 @@ namespace BH.Components.Editor
 
 				GUILayout.BeginVertical(GUI.skin.box);
 				{
-					var modeCurrent = ServerMode.ServerDisabled;
-					ActionDeco(() => { modeCurrent = _map.Find(_ => _.type == Singleton<ServiceNetwork>.I.ServerModeShared.GetType()).mark; }, false);
+					var modeCurrent = NetworkMode.Disabled;
+					ActionDeco(() => { modeCurrent = _map.Find(_ => _.type == Singleton<ServiceNetwork>.I.NetworkModeShared.GetType()).mark; }, false);
 
-					var modeNew = (ServerMode)EditorGUILayout.EnumPopup(new GUIContent("Server mode:"), modeCurrent);
+					var modeNew = (NetworkMode)EditorGUILayout.EnumPopup(new GUIContent("Network mode:"), modeCurrent);
 					if(modeCurrent != modeNew)
 					{
 						ActionDeco(() =>
 						{
 							var type = _map.Find(_ => _.mark == modeNew).type;
-							Singleton<ServiceNetwork>.I.ServerModeShared = (IServerMode)Activator.CreateInstance(type);
+							Singleton<ServiceNetwork>.I.NetworkModeShared = (INetworkMode)Activator.CreateInstance(type);
 						});
 					}
 				}
@@ -183,12 +187,12 @@ namespace BH.Components.Editor
 						ActionDeco(OnLobbyButtonClear);
 					}
 
-					if(GUILayout.Button("Add button"))
+					if(GUILayout.Button("Add bar button"))
 					{
 						ActionDeco(OnLobbyButtonAdd);
 					}
 
-					if(GUILayout.Button("Remove button"))
+					if(GUILayout.Button("Remove bar button"))
 					{
 						ActionDeco(OnLobbyButtonRemove);
 					}

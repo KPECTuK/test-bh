@@ -5,8 +5,7 @@ namespace BH.Components
 {
 	public interface ISceneCamera
 	{
-		Camera ControllerCamera { get; }
-
-		uint IdCorresponding { get; }
+		CxId Id { get; }
+		Camera CompCamera { get; }
 	}
 }

@@ -38,7 +38,7 @@ namespace Mirror.Discovery
         [SerializeField]
         [Tooltip("Time in seconds between multi-cast messages")]
         [Range(1, 60)]
-        float ActiveDiscoveryInterval = 3;
+        public float ActiveDiscoveryInterval = 3;
         
         // broadcast address needs to be configurable on iOS:
         // https://github.com/vis2k/Mirror/pull/3255
@@ -343,6 +343,8 @@ namespace Mirror.Discovery
             {
                 try
                 {
+                    Debug.Log(">> waiting for response");
+
                     await ReceiveGameBroadcastAsync(clientUdpClient);
                 }
                 catch (ObjectDisposedException)

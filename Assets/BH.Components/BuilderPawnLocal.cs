@@ -1,33 +1,26 @@
 ﻿using BH.Model;
 using UnityEngine;
-using UnityEngine.Rendering.Universal;
 
 namespace BH.Components
 {
 	public sealed class BuilderPawnLocal : IBuilderAsset<CompPawn>
 	{
-		public CompPawn Build(Transform parent, CxOrigin origin)
+		public CompPawn Build(Transform parent, CxOrigin origin, ModelViewUser model)
 		{
 			var result = Singleton<ServiceResources>.I.LoadAssetAsResources<CompPawn>(
 				ServiceResources.ID_RESOURCE_PAWN_LOCAL_S,
 				parent,
 				origin);
 
-			result.View.gameObject.SetActive(false);
-
+			model.IdCamera = result.Camera.GetComponent<ISceneCamera>().Id;
+			result.CameraAnchor = result.Camera.transform.localPosition;
 			result.Builder = this;
-
+			result.IdModel = model.IdUser;
 			result.InputReceiver = new InputPawnLocal(result);
 			result.InputReceiver.Enable();
-
 			result.Set(new DriverPawnLocal(result));
-
-			var dataPawn = result.Camera.GetUniversalAdditionalCameraData();
-			dataPawn.renderType = CameraRenderType.Overlay;
-			var dataMain = Camera.main.GetUniversalAdditionalCameraData();
-			dataMain.cameraStack.Insert(0, result.Camera);
-			result.Camera.gameObject.SetActive(true);
-			result.CameraAnchor = result.Camera.transform.localPosition;
+			result.View.gameObject.SetActive(false);
+			Singleton<ServiceCameras>.I.SetSpectator(model.IdCamera);
 
 			#if UNITY_EDITOR
 			var cachedCamera = result.Camera.transform;
@@ -38,17 +31,12 @@ namespace BH.Components
 			return result;
 		}
 
-		public void Destroy(CompPawn pawn)
+		public void Destroy(CompPawn instance)
 		{
-			// порядок вызовов методов OnDisable() OnDestroy() во время выхода из приложения - не определена
-
-			pawn.InputReceiver.Disable();
-
-			if(Camera.main != null)
-			{
-				var dataMain = Camera.main.GetUniversalAdditionalCameraData();
-				dataMain.cameraStack.Remove(pawn.Camera);
-			}
+			instance.InputReceiver.Disable();
+			Singleton<ServiceCameras>.I.SetSpectator();
+			
+			//? destroy
 		}
 	}
 }

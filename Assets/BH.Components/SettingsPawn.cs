@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using BH.Model;
 using UnityEngine;
 #if UNITY_EDITOR
@@ -19,6 +20,8 @@ namespace BH.Components
 
 		[Range(.01f, 10f)] public float MaxUltSpeed = 4f;
 		[Range(.01f, 10f)] public float MaxUltDistance = 2f;
+
+		public PawnFeature[] Features;
 
 		public string RenderUltTime()
 		{
@@ -78,6 +81,56 @@ namespace BH.Components
 				var (min, max) = GetRange(nameof(MaxUltDistance));
 				MaxUltDistance = MaxUltDistance.Clamp(min, max);
 			}
+
+			// ReSharper disable once InconsistentNaming
+			bool isFeatureNotUnique(int index)
+			{
+				if(Features[index].IdFeature.IsEmpty)
+				{
+					return true;
+				}
+
+				for(var indexSearch = 0; indexSearch < Features.Length; indexSearch++)
+				{
+					if(indexSearch == index)
+					{
+						continue;
+					}
+
+					if(Features[index].IdFeature == Features[indexSearch].IdFeature)
+					{
+						return true;
+					}
+				}
+
+				return false;
+			}
+
+			if(Features != null)
+			{
+				//$"features: {Features.Length}".Log();
+
+				//! unity makes a copy of another element (probably selected one) .. nice
+				for(var index = 0; index < Features.Length; index++)
+				{
+					var attempts = 0;
+					const int ATTEMPTS_I = 100;
+					while(isFeatureNotUnique(index) && ++attempts < ATTEMPTS_I)
+					{
+						Features[index].IdFeature = CxId.Create();
+						Features[index].PawnColor = Color.HSVToRGB(UnityEngine.Random.value, 1f, 1f);
+					}
+
+					if(attempts != 0)
+					{
+						$"generated [{attempts,00}]: ( {Features[index].IdFeature}, {Features[index].PawnColor} )".Log();
+					}
+				}
+			}
+			//else
+			//{
+			//	"no features found".Log();
+			//}
 		}
 
 		private static (float min, float max) GetRange(string name)
@@ -91,5 +144,12 @@ namespace BH.Components
 			return (attr.min, attr.max);
 		}
 		#endif
+	}
+
+	[Serializable]
+	public class PawnFeature
+	{
+		public CxId IdFeature;
+		public Color PawnColor;
 	}
 }

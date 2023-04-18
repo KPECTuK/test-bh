@@ -1,36 +1,48 @@
 using System;
 using BH.Model;
 using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
 
 namespace BH.Components
 {
 	public sealed class CompScreenLobbyBtnServer : CompScreenLobbyBtnBase
 	{
-		[NonSerialized] public ModelViewButtonServer Model;
+		[NonSerialized] public ModelViewServer Model;
+		[NonSerialized] public Action<ModelViewServer> OnClick;
 
 		public TextMeshProUGUI TextOwner;
 		public TextMeshProUGUI TextServer;
 		public TextMeshProUGUI TextPlayers;
-		
+
+		public Image Back;
+
+		private Color _initial;
+
+		private void Awake()
+		{
+			_initial = Back.color;
+
+			var button = GetComponent<Button>();
+			button.onClick.AddListener(() => { OnClick?.Invoke(Model); });
+		}
+
+		public override void UpdateView()
+		{
+			TextServer.text = Model.RenderServer;
+			TextOwner.text = Model.RenderOwner;
+			TextPlayers.text = Model.RenderPlayers;
+
+			var modelUser = Singleton<ServiceUI>.I.ModelsUser
+				.GetById(Singleton<ServiceNetwork>.I.IdCurrentUser);
+			Back.color = Model.IdHost == modelUser.IdAtHost
+				? Color.Lerp(Color.yellow, Color.black, .5f)
+				: _initial;
+		}
+
 		public override bool IsModel(object model)
 		{
-			return ReferenceEquals(Model, model);
-		}
-	}
-
-	public sealed class ModelViewButtonServer
-	{
-		private readonly string _idOwner = "o".MakeUnique();
-		private readonly string _idServer = "s".MakeUnique();
-		private readonly string _idPlayers = "p".MakeUnique();
-
-		public string IdOwner => $"owner: {_idOwner}";
-		public string IdServer => $"server: {_idServer}";
-		public string IdPlayers => $"players: {_idPlayers}";
-
-		public override string ToString()
-		{
-			return "model server";
+			return Model.Equals(model);
 		}
 	}
 }

@@ -7,9 +7,8 @@ namespace BH.Components
 {
 	public class ServiceResources : IService
 	{
-		// use custom Url scheme here:
+		// TL; TI; use custom Url scheme here:
 		// it's just a place to control resources routine
-		// too long to implement
 
 		public const string ID_RESOURCE_PAWN_LOCAL_S = "pfv_pawn_firstP";
 		public const string ID_RESOURCE_PAWN_REMOTE_S = "pfv_pawn_thirdP";
@@ -39,24 +38,17 @@ namespace BH.Components
 			"initialized: resources".Log();
 		}
 
-		public CompPawn BuildPawn<T>(Transform parent, CxOrigin origin) where T : class, IBuilderAsset<CompPawn>
+		public CompPawn BuildPawn<T>(Transform parent, CxOrigin origin, ModelViewUser model) where T : class, IBuilderAsset<CompPawn>
 		{
-			T builder = null;
 			for(var index = 0; index < _factoryBuilderAsset.Length; index++)
 			{
 				if(_factoryBuilderAsset[index] is T cast)
 				{
-					builder = cast;
-					break;
+					return cast.Build(parent, origin, model);
 				}
 			}
 
-			if(builder == null)
-			{
-				throw new Exception($"pawn builder is not found: {typeof(T)}");
-			}
-
-			return builder.Build(parent, origin);
+			throw new Exception($"pawn builder is not found: {typeof(T)}");
 		}
 
 		public T LoadAssetAsResources<T>(string id, Transform parent, CxOrigin origin) where T : Component
@@ -85,6 +77,11 @@ namespace BH.Components
 				origin.Orientation,
 				parent);
 			return instance.GetComponent<T>();
+		}
+
+		public SettingsPawn GetProtoSettingsPawn()
+		{
+			return _proto.SettingsPawn;
 		}
 
 		private T FindLibraryProto<T>(string id) where T : Component

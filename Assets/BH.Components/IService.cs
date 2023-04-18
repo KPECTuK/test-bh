@@ -4,6 +4,6 @@ namespace BH.Components
 {
 	public interface IService : IDisposable
 	{
-		public void Reset() { }
+		void Reset();
 	}
 }

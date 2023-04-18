@@ -11,6 +11,7 @@ namespace BH.Components
 	[RequireComponent(typeof(CanvasScaler))]
 	public class CompScreens : MonoBehaviour
 	{
+		// alternative to IsBusy request: both are rough implementation
 		public class Signal
 		{
 			public bool Is { get; set; }
@@ -32,7 +33,7 @@ namespace BH.Components
 				}
 				else
 				{
-					while(Singleton<ServiceUI>.I.EventsView.TryPeek(out var @event))
+					while(Singleton<ServiceUI>.I.Events.TryPeek(out var @event))
 					{
 						// stop queue to wait screen transition (batching for particular screen)
 						if(@event is CmdViewScreenChange)
@@ -65,7 +66,7 @@ namespace BH.Components
 				$"skip view command due conditions: {@event.GetType().NameNice()}".LogWarning();
 			}
 
-			Singleton<ServiceUI>.I.EventsView.Dequeue();
+			Singleton<ServiceUI>.I.Events.Dequeue();
 		}
 
 		public CompScreen GetActiveScreen()
