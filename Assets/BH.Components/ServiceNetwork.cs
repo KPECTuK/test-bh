@@ -107,16 +107,14 @@ namespace BH.Components
 					Model = modelUser,
 				});
 
-			Manager.StartClient();
-			Discovery.StartDiscovery();
+			Discovery.StartDiscoveryClient();
 		}
 
 		public void Disable()
 		{
 			// sets states as a result
 
-			Discovery.StopDiscovery();
-			Manager.StopClient();
+			Discovery.StopDiscoveryClient();
 
 			Discovery.OnServerFound = null;
 			Discovery.OnServerUpdated = null;
@@ -440,16 +438,14 @@ namespace BH.Components
 				}
 			}
 
-			Manager.OnStartHost();
-			Discovery.AdvertiseServer();
+			Discovery.StartDiscoveryServer();
 		}
 
 		public void Disable()
 		{
 			// sets states as a result
 
-			Discovery.StopAdvertiseServer();
-			Manager.StopHost();
+			Discovery.StopDiscoveryServer();
 
 			Discovery.OnUserFound = null;
 			Discovery.OnUserUpdated = null;

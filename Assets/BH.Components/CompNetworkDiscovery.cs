@@ -6,10 +6,11 @@ using System.Threading;
 using BH.Model;
 using Mirror;
 using Mirror.Discovery;
+using UnityEngine;
 
 namespace BH.Components
 {
-	public sealed class CompNetworkDiscovery : NetworkDiscoveryBase<Request, Response>
+	public sealed class CompNetworkDiscovery : MonoBehaviour, ISettingsDiscovery
 	{
 		// any server is allowed to response, no ProcessClientRequest()
 
@@ -28,9 +29,19 @@ namespace BH.Components
 
 		private Transport _transport;
 
+		public long SecretHandshake { get; private set; }
+		public int ServerBroadcastListenPort { get; private set; }
+		public float ActiveDiscoveryInterval { get; private set; }
+		public string BroadcastAddress { get; private set; }
+
 		private void Awake()
 		{
 			_transport = GetComponent<Transport>();
+
+			SecretHandshake = 0L.Randomize();
+			ServerBroadcastListenPort = 47777;
+			ActiveDiscoveryInterval = 3f;
+			BroadcastAddress = null;
 		}
 
 		private void Update()
@@ -96,20 +107,44 @@ namespace BH.Components
 			}
 		}
 
-		public void StopAdvertiseServer()
+		public void StartDiscoveryServer()
 		{
-			// TODO: why not stop advertising in base
+			if(Singleton<ServiceDiscoveryServerSide<Request, Response>>.I.TryStart(this, ProcessRequest))
+			{
+				"<color=green> discovery is not started: server</color>".LogWarning();
+			}
+			else
+			{
+				"<color=red> discovery is not started: server</color>".LogWarning();
+			}
+		}
 
-			serverUdpClient?.Dispose();
-			serverUdpClient = null;
+		public void StopDiscoveryServer()
+		{
+			Singleton<ServiceDiscoveryServerSide<Request, Response>>.I.Stop();
+			"<color=yellow> discovery stop: server</color>".LogWarning();
+		}
 
-			// or 
+		public void StartDiscoveryClient()
+		{
+			if(Singleton<ServiceDiscoveryClientSide<Request, Response>>.I.TryStart(this, BuildRequest, ProcessResponse))
+			{
+				"<color=green> discovery is not started: client</color>".LogWarning();
+			}
+			else
+			{
+				"<color=red> discovery is not started: server</color>".LogWarning();
+			}
+		}
 
-			// StopDiscovery();
+		public void StopDiscoveryClient()
+		{
+			Singleton<ServiceDiscoveryClientSide<Request, Response>>.I.Stop();
+			"<color=yellow> discovery stop: client</color>".LogWarning();
 		}
 
 		// client side
-		protected override Request GetRequest()
+		private Request BuildRequest()
 		{
 			var model = Singleton<ServiceUI>.I.ModelsUser
 				.GetById(Singleton<ServiceNetwork>.I.IdCurrentUser);
@@ -121,7 +156,7 @@ namespace BH.Components
 		}
 
 		// server side
-		protected override Response ProcessRequest(Request request, IPEndPoint epRequestFrom)
+		private Response ProcessRequest(Request request, IPEndPoint epRequestFrom)
 		{
 			// update timeout by event
 			var queue = Singleton<ServiceUI>.I.ModelsUser;
@@ -205,7 +240,7 @@ namespace BH.Components
 		}
 
 		// client side
-		protected override void ProcessResponse(Response response, IPEndPoint epRespoceFrom)
+		private void ProcessResponse(Response response, IPEndPoint epResponseFrom)
 		{
 			// update timeout by event
 			var queue = Singleton<ServiceUI>.I.ModelsServer;
@@ -222,7 +257,7 @@ namespace BH.Components
 				}
 			}
 
-			var ipText = epRespoceFrom.Address.ToString();
+			var ipText = epResponseFrom.Address.ToString();
 			var builder = new UriBuilder(response.Uri) { Host = ipText };
 
 			if(index == queue.Count)
@@ -234,7 +269,7 @@ namespace BH.Components
 					.Append(response.IdHost.ShortForm())
 					.Log();
 
-				OnServerFound?.Invoke(response, epRespoceFrom, builder.Uri);
+				OnServerFound?.Invoke(response, epResponseFrom, builder.Uri);
 			}
 			else
 			{
