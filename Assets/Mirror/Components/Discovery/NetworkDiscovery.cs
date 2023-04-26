@@ -24,7 +24,7 @@ namespace Mirror.Discovery
 
         public override void Start()
         {
-            ServerId = 0L.Randomize();
+            ServerId = RandomLong();
 
             // active transport gets initialized in awake
             // so make sure we set it here in Start()  (after awakes)

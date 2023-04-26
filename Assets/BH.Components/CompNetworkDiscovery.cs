@@ -1,11 +1,9 @@
 using System;
-using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading;
 using BH.Model;
 using Mirror;
-using Mirror.Discovery;
 using UnityEngine;
 
 namespace BH.Components
@@ -19,8 +17,8 @@ namespace BH.Components
 		// discovery is a persistent service app lifetime (game and lobby)
 		// call Update() means in time (undefined), call callback means any time (undefined)
 
-		public Action<Response, IPEndPoint, Uri> OnServerFound;
-		public Action<Response> OnServerUpdated;
+		public Action<ResponseServer, IPEndPoint, Uri> OnServerFound;
+		public Action<ResponseServer> OnServerUpdated;
 		public Action<CxId> OnServerLost;
 
 		public Action<Request, IPEndPoint> OnUserFound;
@@ -30,7 +28,8 @@ namespace BH.Components
 		private Transport _transport;
 
 		public long SecretHandshake { get; private set; }
-		public int ServerBroadcastListenPort { get; private set; }
+		public int PortServerBroadcastListen { get; private set; }
+		public int PortServerResponseListen { get; private set; }
 		public float ActiveDiscoveryInterval { get; private set; }
 		public string BroadcastAddress { get; private set; }
 
@@ -38,21 +37,30 @@ namespace BH.Components
 		{
 			_transport = GetComponent<Transport>();
 
-			SecretHandshake = 0L.Randomize();
-			ServerBroadcastListenPort = 47777;
-			ActiveDiscoveryInterval = 3f;
+			Writer<Request>.write = Request.Writer;
+			Reader<Request>.read = Request.Reader;
+			Writer<ResponseServer>.write = ResponseServer.Writer;
+			Reader<ResponseServer>.read = ResponseServer.Reader;
+			Writer<CxId>.write = CxId.Writer;
+			Reader<CxId>.read = CxId.Reader;
+			Writer<ResponseUser>.write = ResponseUser.Writer;
+			Reader<ResponseUser>.read = ResponseUser.Reader;
+
+			SecretHandshake = -1;
+			PortServerBroadcastListen = 47777;
+			PortServerResponseListen = 0;
+			ActiveDiscoveryInterval = 1f;
 			BroadcastAddress = null;
 		}
 
 		private void Update()
 		{
 			{
-				var queue = Singleton<ServiceUI>.I.ModelsServer;
-				var size = queue.Count;
+				var list = Singleton<ServiceUI>.I.ModelsServer;
+				var size = list.Count;
 				for(var index = 0; index < size; index++)
 				{
-					var model = queue.Dequeue();
-					queue.Enqueue(model);
+					ref var model = ref list[index];
 
 					// update timeout for current machine
 					if(model.IdHost == Singleton<ServiceNetwork>.I.IdCurrentMachine)
@@ -77,31 +85,30 @@ namespace BH.Components
 			}
 
 			{
-				var queue = Singleton<ServiceUI>.I.ModelsUser;
-				var size = queue.Count;
+				var list = Singleton<ServiceUI>.I.ModelsUser;
+				var size = list.Count;
 				for(var index = 0; index < size; index++)
 				{
-					var desc = queue.Dequeue();
-					queue.Enqueue(desc);
+					ref var model = ref list[index];
 
 					// update timeout for current user
-					if(desc.IdUser == Singleton<ServiceNetwork>.I.IdCurrentUser)
+					if(model.IdUser == Singleton<ServiceNetwork>.I.IdCurrentUser)
 					{
-						desc.LastUpdated = DateTime.UtcNow;
+						model.LastUpdated = DateTime.UtcNow;
 						continue;
 					}
 
 					// interval + lag (roughly)
-					if((DateTime.UtcNow - desc.LastUpdated).TotalSeconds > ActiveDiscoveryInterval * 2f)
+					if((DateTime.UtcNow - model.LastUpdated).TotalSeconds > ActiveDiscoveryInterval * 2f)
 					{
 						new StringBuilder()
 							.Append("(timeout) [")
 							.Append(Thread.CurrentThread.ManagedThreadId)
 							.Append("] <color=red>USER drop</color>: ")
-							.Append(desc.IdUser.ShortForm())
+							.Append(model.IdUser.ShortForm())
 							.Log();
 
-						OnUserLost?.Invoke(desc.IdUser);
+						OnUserLost?.Invoke(model.IdUser);
 					}
 				}
 			}
@@ -109,77 +116,82 @@ namespace BH.Components
 
 		public void StartDiscoveryServer()
 		{
-			if(Singleton<ServiceDiscoveryServerSide<Request, Response>>.I.TryStart(this, ProcessRequest))
+			if(Singleton<ServiceDiscoveryServerSide<Request, ResponseServer>>.I.TryStart(this, ProcessRequest))
 			{
-				"<color=green> discovery is not started: server</color>".LogWarning();
+				"<color=lime>discovery is started: server</color>".Log();
 			}
 			else
 			{
-				"<color=red> discovery is not started: server</color>".LogWarning();
+				"<color=red>discovery is not started: server</color>".LogWarning();
 			}
 		}
 
 		public void StopDiscoveryServer()
 		{
-			Singleton<ServiceDiscoveryServerSide<Request, Response>>.I.Stop();
-			"<color=yellow> discovery stop: server</color>".LogWarning();
+			Singleton<ServiceDiscoveryServerSide<Request, ResponseServer>>.I.Stop();
+			"<color=yellow>discovery is stopped: server</color>".Log();
 		}
 
 		public void StartDiscoveryClient()
 		{
-			if(Singleton<ServiceDiscoveryClientSide<Request, Response>>.I.TryStart(this, BuildRequest, ProcessResponse))
+			if(Singleton<ServiceDiscoveryClientSide<Request, ResponseServer>>.I.TryStart(this, BuildRequest, ProcessResponse))
 			{
-				"<color=green> discovery is not started: client</color>".LogWarning();
+				"<color=lime>discovery is started: client</color>".Log();
 			}
 			else
 			{
-				"<color=red> discovery is not started: server</color>".LogWarning();
+				"<color=red>discovery is not started: client</color>".LogWarning();
 			}
 		}
 
 		public void StopDiscoveryClient()
 		{
-			Singleton<ServiceDiscoveryClientSide<Request, Response>>.I.Stop();
-			"<color=yellow> discovery stop: client</color>".LogWarning();
+			Singleton<ServiceDiscoveryClientSide<Request, ResponseServer>>.I.Stop();
+			"<color=yellow>discovery is stopped: client</color>".Log();
 		}
 
 		// client side
 		private Request BuildRequest()
 		{
-			var model = Singleton<ServiceUI>.I.ModelsUser
-				.GetById(Singleton<ServiceNetwork>.I.IdCurrentUser);
+			var idUser = Singleton<ServiceNetwork>.I.IdCurrentUser;
+			ref var modelUser = ref Singleton<ServiceUI>.I.ModelsUser.Get(idUser, out var contains);
+			if(!contains)
+			{
+				throw new Exception("can't find local user");
+			}
+
 			return new Request
 			{
-				IdClientUser = model.IdUser,
-				IsReady = model.IsReady,
+				IdUser = idUser,
+				IdClientMachine = Singleton<ServiceNetwork>.I.IdCurrentMachine,
+				IsReady = modelUser.IsReady,
 			};
 		}
 
 		// server side
-		private Response ProcessRequest(Request request, IPEndPoint epRequestFrom)
+		private ResponseServer ProcessRequest(Request request, IPEndPoint epRequestFrom)
 		{
 			// update timeout by event
-			var queue = Singleton<ServiceUI>.I.ModelsUser;
+			var list = Singleton<ServiceUI>.I.ModelsUser;
 			var index = 0;
-			for(var size = queue.Count; index < size; index++)
+			for(var size = list.Count; index < size; index++)
 			{
-				var model = queue.Dequeue();
-				var isMatch = model.IdUser == request.IdClientUser;
+				ref var model = ref list[index];
+				var isMatch = model.IdUser == request.IdUser;
 				model.LastUpdated = isMatch ? DateTime.UtcNow : model.LastUpdated;
-				queue.Enqueue(model);
 				if(isMatch)
 				{
 					break;
 				}
 			}
 
-			if(index == queue.Count)
+			if(index == list.Count)
 			{
 				new StringBuilder()
 					.Append("Q (request) [")
 					.Append(Thread.CurrentThread.ManagedThreadId)
 					.Append("] <color=lime>USER found</color>: ")
-					.Append(request.IdClientUser.ShortForm())
+					.Append(request.IdUser.ShortForm())
 					.Log();
 
 				OnUserFound?.Invoke(request, epRequestFrom);
@@ -190,7 +202,7 @@ namespace BH.Components
 					.Append("Q (request) [")
 					.Append(Thread.CurrentThread.ManagedThreadId)
 					.Append("] <color=yellow>USER updated</color>: ")
-					.Append(request.IdClientUser.ShortForm())
+					.Append(request.IdUser.ShortForm())
 					.Log();
 
 				OnUserUpdated?.Invoke(request);
@@ -199,58 +211,66 @@ namespace BH.Components
 			// ReSharper disable once InconsistentNaming
 			static string dump(ModelViewUser model)
 			{
-				return $"host: {model.IdAtHost.ShortForm()}; user: {model.IdUser.ShortForm()}";
+				return $"host: {model.IdHostAt.ShortForm()}; user: {model.IdUser.ShortForm()}; feature: {model.IdFeature.ShortForm()}";
 			}
 
-			// broken Mirror plugin
-			var cache = new ModelViewUser[4];
-			// new user has been appended already
-			var users = Singleton<ServiceUI>.I.ModelsUser.GetRecent(
-				cache,
+			var cacheIds = new CxId[4];
+			var users = Singleton<ServiceUI>.I.ModelsUser.GetRecentForHost(
+				cacheIds,
 				Singleton<ServiceNetwork>.I.IdCurrentMachine);
 
-			cache.ToText($"responding with users: {users}", dump).Log();
+			var cacheModels = new ModelViewUser[users];
+			for(var indexIds = 0; indexIds < users; indexIds++)
+			{
+				cacheModels[indexIds] = Singleton<ServiceUI>.I.ModelsUser.Get(cacheIds[indexIds], out var contains);
+			}
+
+			cacheModels.ToText($"responding with users: {users}", dump).Log();
 			Singleton<ServiceUI>.I.ModelsUser
 				.ToText($"of users total: {Singleton<ServiceUI>.I.ModelsUser.Count}", dump)
 				.Log();
 
-			var response = new Response
+			// ReSharper disable once UseObjectOrCollectionInitializer
+			var response = new ResponseServer();
+			response.IdHost = Singleton<ServiceNetwork>.I.IdCurrentMachine;
+			response.Uri = _transport == null ? null : _transport.ServerUri();
+			response.ServerUsersTotal = Singleton<ServiceUI>.I.ModelsUser.Count;
+
+			response.Owner.IdUser = users < 1 ? CxId.Empty : cacheModels[0].IdUser;
+			response.Owner.IdFeature = users < 1 ? CxId.Empty : cacheModels[0].IdFeature;
+			response.Owner.IsReady = users >= 1 && cacheModels[1].IsReady;
+
+			if(response.Owner.IdUser != Singleton<ServiceNetwork>.I.IdCurrentUser)
 			{
-				IdHost = Singleton<ServiceNetwork>.I.IdCurrentMachine,
-				IdOwner = Singleton<ServiceNetwork>.I.IdCurrentUser,
-				Uri = _transport == null ? null : _transport.ServerUri(),
-				ServerUsersTotal = Singleton<ServiceUI>.I.ModelsUser.Count,
-				ServerUsersReady = Singleton<ServiceUI>.I.ModelsUser.Count(_ => _.IsReady),
-				IdFeature = Singleton<ServiceUI>.I.ModelsUser.GetById(request.IdClientUser).IdFeature,
-				//
-				IdParty_01 = users < 1 ? CxId.Empty : cache[1].IdUser,
-				IdParty_02 = users < 2 ? CxId.Empty : cache[2].IdUser,
-				IdParty_03 = users < 3 ? CxId.Empty : cache[3].IdUser,
-				//
-				IdFeature_01 = users < 1 ? CxId.Empty : cache[1].IdFeature,
-				IdFeature_02 = users < 2 ? CxId.Empty : cache[2].IdFeature,
-				IdFeature_03 = users < 3 ? CxId.Empty : cache[3].IdFeature,
-				//
-				IsReady_01 = users >= 1 && cache[1].IsReady,
-				IsReady_02 = users >= 2 && cache[2].IsReady,
-				IsReady_03 = users >= 3 && cache[3].IsReady,
-			};
+				throw new Exception($"current user is not an owner: (current: {response.Owner.IdUser} expected: {Singleton<ServiceNetwork>.I.IdCurrentUser})");
+			}
+
+			response.Party_01.IdUser = users < 2 ? CxId.Empty : cacheModels[1].IdUser;
+			response.Party_01.IdFeature = users < 2 ? CxId.Empty : cacheModels[1].IdFeature;
+			response.Party_01.IsReady = users >= 2 && cacheModels[1].IsReady;
+
+			response.Party_02.IdUser = users < 3 ? CxId.Empty : cacheModels[2].IdUser;
+			response.Party_02.IdFeature = users < 3 ? CxId.Empty : cacheModels[2].IdFeature;
+			response.Party_02.IsReady = users >= 3 && cacheModels[2].IsReady;
+
+			response.Party_03.IdUser = users < 4 ? CxId.Empty : cacheModels[3].IdUser;
+			response.Party_03.IdFeature = users < 4 ? CxId.Empty : cacheModels[3].IdFeature;
+			response.Party_03.IsReady = users >= 4 && cacheModels[3].IsReady;
 
 			return response;
 		}
 
 		// client side
-		private void ProcessResponse(Response response, IPEndPoint epResponseFrom)
+		private void ProcessResponse(ResponseServer response, IPEndPoint epResponseFrom)
 		{
 			// update timeout by event
 			var queue = Singleton<ServiceUI>.I.ModelsServer;
 			var index = 0;
 			for(var size = queue.Count; index < size; index++)
 			{
-				var model = queue.Dequeue();
+				ref var model = ref queue[index];
 				var isMatch = model.IdHost == response.IdHost;
 				model.LastUpdated = isMatch ? DateTime.UtcNow : model.LastUpdated;
-				queue.Enqueue(model);
 				if(isMatch)
 				{
 					break;
@@ -287,29 +307,91 @@ namespace BH.Components
 
 	public struct Request : NetworkMessage
 	{
-		public CxId IdClientUser;
+		public CxId IdUser;
+		public CxId IdClientMachine;
 		public bool IsReady;
+
+		public static void Writer(NetworkWriter writer, Request source)
+		{
+			writer.Write(source.IdUser);
+			writer.Write(source.IdClientMachine);
+			writer.Write(source.IsReady);
+		}
+
+		public static Request Reader(NetworkReader reader)
+		{
+			var result = new Request
+			{
+				IdUser = reader.Read<CxId>(),
+				IdClientMachine = reader.Read<CxId>(),
+				IsReady = reader.ReadBool(),
+			};
+			return result;
+		}
 	}
 
-	public struct Response : NetworkMessage
+	public struct ResponseServer : NetworkMessage
 	{
 		public CxId IdHost;
-		public CxId IdOwner;
-		public CxId IdFeature;
 		public Uri Uri;
 		public int ServerUsersTotal;
-		public int ServerUsersReady;
 
-		public CxId IdParty_01;
-		public CxId IdParty_02;
-		public CxId IdParty_03;
+		public ResponseUser Owner;
+		public ResponseUser Party_01;
+		public ResponseUser Party_02;
+		public ResponseUser Party_03;
 
-		public CxId IdFeature_01;
-		public CxId IdFeature_02;
-		public CxId IdFeature_03;
+		public static void Writer(NetworkWriter writer, ResponseServer source)
+		{
+			writer.Write(source.IdHost);
+			writer.Write(source.Uri);
+			writer.Write(source.ServerUsersTotal);
+			// 
+			writer.Write(source.Owner);
+			writer.Write(source.Party_01);
+			writer.Write(source.Party_02);
+			writer.Write(source.Party_03);
+		}
 
-		public bool IsReady_01;
-		public bool IsReady_02;
-		public bool IsReady_03;
+		public static ResponseServer Reader(NetworkReader reader)
+		{
+			var result = new ResponseServer
+			{
+				IdHost = reader.Read<CxId>(),
+				Uri = reader.ReadUri(),
+				ServerUsersTotal = reader.ReadInt(),
+				//
+				Owner = reader.Read<ResponseUser>(),
+				Party_01 = reader.Read<ResponseUser>(),
+				Party_02 = reader.Read<ResponseUser>(),
+				Party_03 = reader.Read<ResponseUser>(),
+			};
+			return result;
+		}
+	}
+
+	public struct ResponseUser
+	{
+		public CxId IdUser;
+		public CxId IdFeature;
+		public bool IsReady;
+
+		public static void Writer(NetworkWriter writer, ResponseUser source)
+		{
+			writer.Write(source.IdUser);
+			writer.Write(source.IdFeature);
+			writer.Write(source.IsReady);
+		}
+
+		public static ResponseUser Reader(NetworkReader reader)
+		{
+			var result = new ResponseUser
+			{
+				IdUser = reader.Read<CxId>(),
+				IdFeature = reader.Read<CxId>(),
+				IsReady = reader.ReadBool(),
+			};
+			return result;
+		}
 	}
 }

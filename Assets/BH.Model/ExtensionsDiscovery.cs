@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace Mirror.Discovery
+namespace BH.Model
 {
 	public static class ExtensionsDiscovery
 	{

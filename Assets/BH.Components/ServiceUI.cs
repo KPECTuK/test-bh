@@ -15,8 +15,8 @@ namespace BH.Components
 
 		// TL; TI; i do now want to make copies of sets and cannot implement cyclic list
 		// with random access due limited time, hadn't found any of mine
-		public readonly Queue<ModelViewServer> ModelsServer = new();
-		public readonly Queue<ModelViewUser> ModelsUser = new();
+		public readonly ListRef<ModelViewServer> ModelsServer = new();
+		public readonly ListRef<ModelViewUser> ModelsUser = new();
 
 		public void Reset()
 		{
@@ -29,10 +29,10 @@ namespace BH.Components
 			"initialized: ui".Log();
 		}
 
-		public void Dispose()
-		{
-		}
+		public void Dispose() { }
 	}
+
+	// TODO: all contains might be in Assert()
 
 	public class CmdViewScreenChange : ICommand<CompScreens>
 	{
@@ -52,115 +52,99 @@ namespace BH.Components
 
 	public class CmdViewLobbyClear : ICommand<CompScreens>
 	{
-		public bool RemoveAllFromServiceServer = true;
-		public bool KeepSelfInServiceServer = true;
-		public bool RemoveAllFromServiceUser = true;
-		public bool KeepSelfInServiceUser = true;
+		public readonly Queue<ModelViewServer> ServersToDelete = new();
+		public readonly Queue<ModelViewUser> UsersToDelete = new();
 
-		public bool Assert(CompScreens context)
+		public virtual bool Assert(CompScreens context)
 		{
 			// check active screen is LOBBY
 			var active = context.GetActiveScreen();
 			return active != null && active.name.Contains(ServiceUI.SCREEN_LOBBY_S);
 		}
 
-		public void Execute(CompScreens context)
+		public virtual void Execute(CompScreens context)
 		{
 			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
+
+			controller.Bar.GetButtons().ToText("button, found on bar").Log();
+			ServersToDelete.ToText("buttons, scheduled for remove (servers)").Log();
+			UsersToDelete.ToText("buttons, scheduled for remove (users)").Log();
+
 			DestroyAllServerButtonsIfAny(controller);
 			DestroyAllUserButtonsIfAny(controller);
 		}
 
 		private void DestroyAllServerButtonsIfAny(CompScreenLobby controller)
 		{
-			var queue = Singleton<ServiceUI>.I.ModelsServer;
-			var size = queue.Count;
+			var size = ServersToDelete.Count;
 			for(var index = 0; index < size; index++)
 			{
-				// based on models existing
-				var modelServer = queue.Dequeue();
-
-				if(!RemoveAllFromServiceServer)
-				{
-					queue.Enqueue(modelServer);
-
-					continue;
-				}
-
-				if(KeepSelfInServiceServer && modelServer.IdHost == Singleton<ServiceNetwork>.I.IdCurrentMachine)
-				{
-					queue.Enqueue(modelServer);
-				}
-				else
-				{
-					Singleton<ServiceUI>.I.ModelsServer.ToText($"remove <b><color=white>(server)</color></b>: {modelServer}").Log();
-				}
-
-				controller.Bar.Schedule(controller.Bar.TaskRemoveButtonAnim(modelServer));
+				var modelServer = ServersToDelete.Dequeue();
+				controller.Bar.Scheduler.PassThrough.Schedule(modelServer.IdHost, controller.Bar.TaskRemoveButtonAnim);
 			}
 		}
 
 		private void DestroyAllUserButtonsIfAny(CompScreenLobby controller)
 		{
-			var queue = Singleton<ServiceUI>.I.ModelsUser;
-			var size = queue.Count;
+			var size = UsersToDelete.Count;
 			for(var index = 0; index < size; index++)
 			{
-				// based on models existing
-				var modelUser = queue.Dequeue();
-
-				if(!RemoveAllFromServiceUser)
-				{
-					queue.Enqueue(modelUser);
-
-					continue;
-				}
-
-				if(KeepSelfInServiceUser && modelUser.IdUser == Singleton<ServiceNetwork>.I.IdCurrentUser)
-				{
-					queue.Enqueue(modelUser);
-				}
-				else
-				{
-					Singleton<ServiceUI>.I.ModelsUser.ToText($"remove <b><color=white>(user)</color></b>: {modelUser}").Log();
-				}
-
-				controller.Bar.Schedule(controller.Bar.TaskRemoveButtonAnim(modelUser));
+				var modelUser = UsersToDelete.Dequeue();
+				controller.Bar.Scheduler.PassThrough.Schedule(modelUser.IdUser, controller.Bar.TaskRemoveButtonAnim);
 			}
+		}
+	}
+
+	public class CmdViewLobbyModeChange<T> : CmdViewLobbyClear where T : IScheduler, new()
+	{
+		public override void Execute(CompScreens context)
+		{
+			base.Execute(context);
+
+			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
+			controller.Bar.SetScheduler<T>();
 		}
 	}
 
 	public class CmdViewLobbyUserAppend : ICommand<CompScreens>
 	{
-		public ModelViewUser Model;
+		public CxId IdModel;
 
 		public bool Assert(CompScreens context)
 		{
 			var active = context.GetActiveScreen();
-			return active != null && active.name.Contains(ServiceUI.SCREEN_LOBBY_S);
+			return !IdModel.IsEmpty && active != null && active.name.Contains(ServiceUI.SCREEN_LOBBY_S);
 		}
 
 		public void Execute(CompScreens context)
 		{
 			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
-			controller.Bar.Schedule(controller.Bar.TaskAppendButtonAnim(Model));
+			controller.Bar.Scheduler.Schedule(IdModel, controller.Bar.TaskAppendButtonUserAnim);
+
+			Singleton<ServicePawns>.I.Events.Enqueue(
+				new CmdPawnLobbyCreate
+				{
+					IdModel = IdModel,
+				});
 		}
 	}
 
 	public class CmdViewLobbyUserUpdate : ICommand<CompScreens>
 	{
-		public ModelViewUser Model;
+		public CxId IdModel;
 
 		public bool Assert(CompScreens context)
 		{
 			var active = context.GetActiveScreen();
-			return active != null && active.name.Contains(ServiceUI.SCREEN_LOBBY_S);
+			return !IdModel.IsEmpty && active != null && active.name.Contains(ServiceUI.SCREEN_LOBBY_S);
 		}
 
 		public void Execute(CompScreens context)
 		{
 			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
-			controller.Bar.Schedule(controller.Bar.TaskUpdateButtonAnim(Model));
+			controller.Bar.Scheduler.Schedule(IdModel, controller.Bar.TaskUpdateButtonAnim);
+
+			// TODO: update pawn
 
 			//var queue = Singleton<ServiceUI>.I.ModelsUser;
 			//for(int index = 0,
@@ -181,53 +165,63 @@ namespace BH.Components
 
 	public class CmdViewLobbyUserRemove : ICommand<CompScreens>
 	{
-		public ModelViewUser Model;
+		public CxId IdModel;
 
 		public bool Assert(CompScreens context)
 		{
 			var active = context.GetActiveScreen();
-			return active != null && active.name.Contains(ServiceUI.SCREEN_LOBBY_S);
+			return !IdModel.IsEmpty && active != null && active.name.Contains(ServiceUI.SCREEN_LOBBY_S);
 		}
 
 		public void Execute(CompScreens context)
 		{
 			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
-			controller.Bar.Schedule(controller.Bar.TaskRemoveButtonAnim(Model));
+			controller.Bar.Scheduler.PassThrough.Schedule(IdModel, controller.Bar.TaskRemoveButtonAnim);
+
+			Singleton<ServicePawns>.I.Events.Enqueue(
+				new CmdPawnDestroy
+				{
+					IdModel = IdModel,
+				});
 		}
 	}
 
 	public class CmdViewLobbyServerAppend : ICommand<CompScreens>
 	{
-		public ModelViewServer Model;
+		public CxId IdModel;
 
 		public bool Assert(CompScreens context)
 		{
 			var active = context.GetActiveScreen();
-			return active != null && active.name.Contains(ServiceUI.SCREEN_LOBBY_S);
+			return !IdModel.IsEmpty && active != null && active.name.Contains(ServiceUI.SCREEN_LOBBY_S);
 		}
 
 		public void Execute(CompScreens context)
 		{
 			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
-			controller.Bar.Schedule(controller.Bar.TaskAppendButtonAnim(Model));
+			controller.Bar.Scheduler.Schedule(IdModel, controller.Bar.TaskAppendButtonServerAnim);
+
+			// not selected, no need to update pawns
+			//! no need cause user update will do it
 		}
 	}
 
 	public class CmdViewLobbyServerUpdate : ICommand<CompScreens>
 	{
-		public ModelViewServer Model;
+		public CxId IdModel;
 
 		public bool Assert(CompScreens context)
 		{
 			var active = context.GetActiveScreen();
-			return active != null && active.name.Contains(ServiceUI.SCREEN_LOBBY_S);
+			return !IdModel.IsEmpty && active != null && active.name.Contains(ServiceUI.SCREEN_LOBBY_S);
 		}
 
 		public void Execute(CompScreens context)
 		{
 			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
-			controller.Bar.Schedule(controller.Bar.TaskUpdateButtonAnim(Model));
+			controller.Bar.Scheduler.Schedule(IdModel, controller.Bar.TaskUpdateButtonAnim);
 
+			//! no need cause user update will do it
 			//var queue = Singleton<ServiceUI>.I.ModelsServer;
 			//for(int index = 0,
 			//	size = queue.Count; index < size; index++)
@@ -247,18 +241,18 @@ namespace BH.Components
 
 	public class CmdViewLobbyServerRemove : ICommand<CompScreens>
 	{
-		public ModelViewServer Model;
+		public CxId IdModel;
 
 		public bool Assert(CompScreens context)
 		{
 			var active = context.GetActiveScreen();
-			return active != null && active.name.Contains(ServiceUI.SCREEN_LOBBY_S);
+			return !IdModel.IsEmpty && active != null && active.name.Contains(ServiceUI.SCREEN_LOBBY_S);
 		}
 
 		public void Execute(CompScreens context)
 		{
 			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
-			controller.Bar.Schedule(controller.Bar.TaskRemoveButtonAnim(Model));
+			controller.Bar.Scheduler.PassThrough.Schedule(IdModel, controller.Bar.TaskRemoveButtonAnim);
 		}
 	}
 }

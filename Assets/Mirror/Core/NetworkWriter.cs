@@ -139,7 +139,10 @@ namespace Mirror
             // => our 1mio writes benchmark is 6x slower with Marshal.SizeOf<T>
             // => for blittable types, sizeof(T) is even recommended:
             // https://docs.microsoft.com/en-us/dotnet/standard/native-interop/best-practices
+            //! sizeof is not relabel in managed code, best practice is to use GetSize custom function in conjunction with serialization methods
             int size = sizeof(T);
+
+            // Debug.Log($"on write, size detect for '{typeof(T).Name}': {size}");
 
             // ensure capacity
             // NOTE that our runtime resizing comes at no extra cost because:

@@ -1,9 +1,10 @@
-namespace Mirror.Discovery
+namespace BH.Model
 {
 	public interface ISettingsDiscovery
 	{
 		long SecretHandshake { get; }
-		int ServerBroadcastListenPort { get; }
+		int PortServerBroadcastListen { get; }
+		int PortServerResponseListen { get; }
 		float ActiveDiscoveryInterval { get; }
 		string BroadcastAddress { get; }
 	}

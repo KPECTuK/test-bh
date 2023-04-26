@@ -31,6 +31,7 @@ namespace BH.Model
 		[FieldOffset(13)] private byte _13;
 		[FieldOffset(14)] private byte _14;
 		[FieldOffset(15)] private byte _15;
+		/// <summary> immutable </summary>
 		[FieldOffset(SIZE_I)] private int _hash;
 
 		public bool IsEmpty => Compare(ref this, ref Empty);
@@ -112,9 +113,11 @@ namespace BH.Model
 			return builder.ToString();
 		}
 
-		public string ShortForm()
+		public string ShortForm(bool isBraces = true)
 		{
-			return $"[{_id[0]:X2}..{_id[14]:X2}{_id[15]:X2}]";
+			return isBraces
+				?$"[{_id[0]:X2}..{_id[14]:X2}{_id[15]:X2}]"
+				:$"{_id[0]:X2}..{_id[14]:X2}{_id[15]:X2}";
 		}
 
 		private static bool Compare(ref CxId source, ref CxId comparand)
@@ -136,46 +139,46 @@ namespace BH.Model
 			return new(guid);
 		}
 
-		public static void WriteTo(NetworkWriter target, ref CxId source)
+		public static void Writer(NetworkWriter target, CxId source)
 		{
-			target.WriteByte(source._00);
-			target.WriteByte(source._01);
-			target.WriteByte(source._02);
-			target.WriteByte(source._03);
-			target.WriteByte(source._04);
-			target.WriteByte(source._05);
-			target.WriteByte(source._06);
-			target.WriteByte(source._07);
-			target.WriteByte(source._08);
-			target.WriteByte(source._09);
-			target.WriteByte(source._10);
-			target.WriteByte(source._11);
-			target.WriteByte(source._12);
-			target.WriteByte(source._13);
-			target.WriteByte(source._14);
-			target.WriteByte(source._15);
+			target.WriteBytes(source._id, 0, SIZE_I);
 		}
 
-		public static CxId ReadFrom(NetworkReader source)
+		public static CxId Reader(NetworkReader source)
 		{
 			CxId target = default;
-			target._00 = source.ReadByte();
-			target._01 = source.ReadByte();
-			target._02 = source.ReadByte();
-			target._03 = source.ReadByte();
-			target._04 = source.ReadByte();
-			target._05 = source.ReadByte();
-			target._06 = source.ReadByte();
-			target._07 = source.ReadByte();
-			target._08 = source.ReadByte();
-			target._09 = source.ReadByte();
-			target._10 = source.ReadByte();
-			target._11 = source.ReadByte();
-			target._12 = source.ReadByte();
-			target._13 = source.ReadByte();
-			target._14 = source.ReadByte();
-			target._15 = source.ReadByte();
-			target._hash = target.GetHashCode();
+			var segment = source.ReadBytesSegment(SIZE_I);
+
+			if(segment.Array == null)
+			{
+				throw new Exception("reader segment is null");
+			}
+
+			fixed(byte* segmentPtr = &segment.Array[segment.Offset])
+			{
+				Buffer.MemoryCopy(segmentPtr, target._id, SIZE_I, SIZE_I);
+			}
+
+			var h1 = HashCode.Combine(
+				target._00,
+				target._01,
+				target._02,
+				target._03,
+				target._04,
+				target._05,
+				target._06,
+				target._07);
+			var h2 = HashCode.Combine(
+				target._08,
+				target._09,
+				target._10,
+				target._11,
+				target._12,
+				target._13,
+				target._14,
+				target._15);
+			target._hash = HashCode.Combine(h1, h2);
+
 			return target;
 		}
 	}

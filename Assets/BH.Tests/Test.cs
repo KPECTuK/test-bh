@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using BH.Components;
 using BH.Model;
 using NUnit.Framework;
@@ -107,41 +108,88 @@ namespace BH.Tests
 		[Test]
 		public void BAA_TestGetRecent()
 		{
-			var source = new Queue<ModelViewUser>();
-			source.Enqueue(new ModelViewUser { FirstUpdated = DateTime.Parse("01/01/2000 0:0:1")});
-			source.Enqueue(new ModelViewUser { FirstUpdated = DateTime.Parse("01/01/2000 0:0:7")});
-			source.Enqueue(new ModelViewUser { FirstUpdated = DateTime.Parse("01/01/2000 0:0:3")});
-			source.Enqueue(new ModelViewUser { FirstUpdated = DateTime.Parse("01/01/2000 0:0:2")});
-			source.Enqueue(new ModelViewUser { FirstUpdated = DateTime.Parse("01/01/2000 0:0:6")});
-			source.Enqueue(new ModelViewUser { FirstUpdated = DateTime.Parse("01/01/2000 0:0:4")});
-			source.Enqueue(new ModelViewUser { FirstUpdated = DateTime.Parse("01/01/2000 0:0:5")});
-			source.Enqueue(new ModelViewUser { FirstUpdated = DateTime.Parse("01/01/2000 0:0:1")});
+			var source = new ListRef<ModelViewUser>();
+			source.Add(new ModelViewUser { IdUser = CxId.Create(), FirstUpdated = DateTime.Parse("01/01/2000 0:0:1")});
+			source.Add(new ModelViewUser { IdUser = CxId.Create(), FirstUpdated = DateTime.Parse("01/01/2000 0:0:7")});
+			source.Add(new ModelViewUser { IdUser = CxId.Create(), FirstUpdated = DateTime.Parse("01/01/2000 0:0:3")});
+			source.Add(new ModelViewUser { IdUser = CxId.Create(), FirstUpdated = DateTime.Parse("01/01/2000 0:0:2")});
+			source.Add(new ModelViewUser { IdUser = CxId.Create(), FirstUpdated = DateTime.Parse("01/01/2000 0:0:6")});
+			source.Add(new ModelViewUser { IdUser = CxId.Create(), FirstUpdated = DateTime.Parse("01/01/2000 0:0:4")});
+			source.Add(new ModelViewUser { IdUser = CxId.Create(), FirstUpdated = DateTime.Parse("01/01/2000 0:0:5")});
+			source.Add(new ModelViewUser { IdUser = CxId.Create(), FirstUpdated = DateTime.Parse("01/01/2000 0:0:1")});
 
 			// ReSharper disable once InconsistentNaming
-			static bool isOrdered(ModelViewUser[] set)
+			static bool isUnique(CxId[] set, ListRef<ModelViewUser> data)
 			{
+				// uniqueness
+				for(var indexOuter = 0; indexOuter < set.Length; indexOuter++)
+				{
+					for(var indexInner = 0; indexInner < set.Length; indexInner++)
+					{
+						if(indexInner == indexOuter)
+						{
+							continue;
+						}
+
+						if(set[indexInner] == set[indexOuter])
+						{
+							return false;
+						}
+					}
+				}
+
+				return true;
+			}
+
+			static bool isOrdered(CxId[] set, ListRef<ModelViewUser> data)
+			{
+				// ordered
 				var result = true;
 				for(var index = 0; index < set.Length - 1; index++)
 				{
-					result = result && set[index].FirstUpdated <= set[index + 1].FirstUpdated;
+					var itemLeft = data.Get(set[index], out var containsLeft);
+					var itemRight = data.Get(set[index+ 1], out var containsRight);
+					result = 
+						containsLeft && 
+						containsRight && 
+						result && 
+						itemLeft.FirstUpdated <= itemRight.FirstUpdated;
 				}
 				return result;
 			}
 
-			var result_00 = new ModelViewUser[0];
-			var size = source.GetRecent(result_00, CxId.Empty);
-			result_00.ToText($"test 00 (num: {size})", _ => _.FirstUpdated.ToString()).Log();
-			Assert.IsTrue(isOrdered(result_00));
+			var result = new CxId[0];
+			var size = source.GetRecentForHost(result, CxId.Empty);
+			result
+				.ToText(
+					$"test 00 (num: {size})",
+					_ => source.Get(_, out var contains)
+						.FirstUpdated.ToString(CultureInfo.InvariantCulture))
+				.Log();
+			Assert.IsTrue(isUnique(result, source), "not unique: 00");
+			Assert.IsTrue(isOrdered(result, source), "not ordered: 00");
 
-			var result_01 = new ModelViewUser[1];
-			size = source.GetRecent(result_01, CxId.Empty);
-			result_01.ToText($"test 01 (num: {size})", _ => _.FirstUpdated.ToString()).Log();
-			Assert.IsTrue(isOrdered(result_01));
+			result = new CxId[1];
+			size = source.GetRecentForHost(result, CxId.Empty);
+			result
+				.ToText(
+					$"test 01 (num: {size})",
+					_ => source.Get(_, out var contains)
+						.FirstUpdated.ToString(CultureInfo.InvariantCulture))
+				.Log();
+			Assert.IsTrue(isUnique(result, source), "not unique: 01");
+			Assert.IsTrue(isOrdered(result, source), "not ordered: 01");
 
-			var result_02 = new ModelViewUser[4];
-			size = source.GetRecent(result_02, CxId.Empty);
-			result_02.ToText($"test 02 (num: {size})", _ => _.FirstUpdated.ToString()).Log();
-			Assert.IsTrue(isOrdered(result_02));
+			result = new CxId[4];
+			size = source.GetRecentForHost(result, CxId.Empty);
+			result
+				.ToText(
+					$"test 01 (num: {size})",
+					_ => source.Get(_, out var contains)
+						.FirstUpdated.ToString(CultureInfo.InvariantCulture))
+				.Log();
+			Assert.IsTrue(isUnique(result, source), "not unique: 02");
+			Assert.IsTrue(isOrdered(result, source), "not ordered: 02");
 		}
 	}
 }

@@ -12,22 +12,43 @@ namespace BH.Components
 		public readonly Queue<ICommand<CompPawnSpawners>> Events = new();
 
 		private CxId[] _idsFeature;
+		private CxId[] _idsMap;
 
-		public CxId GetNextFeatureAvailable()
+		public CxId GetNextFeatureAvailableTo(CxId idUser)
 		{
-			var buffer = new ModelViewUser[4];
-			var users = Singleton<ServiceUI>.I.ModelsUser.GetRecent(
-				buffer,
-				Singleton<ServiceNetwork>.I.IdCurrentMachine);
-			for(var index = 0; index < users; index++)
+			// if its occupied already
+			for(var index = 0; index < _idsMap.Length; index++)
 			{
-				if(Array.IndexOf(_idsFeature, buffer[index].IdFeature) == -1)
+				if(_idsMap[index] == idUser)
 				{
-					return buffer[index].IdFeature;
+					return _idsFeature[index];
 				}
 			}
 
-			throw new Exception("no feature found");
+			// search for first free
+			for(var index = 0; index < _idsMap.Length; index++)
+			{
+				if(_idsMap[index].IsEmpty)
+				{
+					_idsMap[index] = idUser;
+					return _idsFeature[index];
+				}
+			}
+
+			// return empty
+			return CxId.Empty;
+		}
+
+		public void ReleaseFeature(CxId idUser)
+		{
+			var index = 0;
+			for(; index < _idsMap.Length; index++)
+			{
+				if(_idsMap[index] == idUser)
+				{
+					_idsMap[index] = CxId.Empty;
+				}
+			}
 		}
 
 		public void Reset()
@@ -37,6 +58,8 @@ namespace BH.Components
 				.Features
 				.Select(_ => _.IdFeature)
 				.ToArray();
+			var size = _idsFeature.Length;
+			_idsMap = new CxId[size];
 		}
 
 		public void Dispose() { }
@@ -44,39 +67,45 @@ namespace BH.Components
 
 	public sealed class CmdPawnDestroy : ICommand<CompPawnSpawners>
 	{
-		public ModelViewUser Model;
+		public CxId IdModel;
 
 		public bool Assert(CompPawnSpawners context)
 		{
-			return Singleton<ServicePawns>.I.Instances.FindAs(_ => _.IdModel == Model.IdUser) != null;
+			return Singleton<ServicePawns>.I.Instances.FindAs(_ => _.IdModel == IdModel) != null;
 		}
 
 		public void Execute(CompPawnSpawners context)
 		{
-			var instance = Singleton<ServicePawns>.I.Instances.RemoveBy(_ => _.IdModel == Model.IdUser);
+			var instance = Singleton<ServicePawns>.I.Instances.RemoveItemBy(_ => _.IdModel == IdModel);
 			context.Schedule(context.TaskDestroy(instance));
 		}
 	}
 
 	public sealed class CmdPawnLobbyCreate : ICommand<CompPawnSpawners>
 	{
-		public ModelViewUser Model;
+		public CxId IdModel;
 
 		public bool Assert(CompPawnSpawners context)
 		{
-			var instance = Singleton<ServicePawns>.I.Instances.FindAs(_ => _.IdModel == Model.IdUser);
-			var models = new ModelViewUser[4];
-			var users = Singleton<ServiceUI>.I.ModelsUser
-				.GetRecent(models, Singleton<ServiceNetwork>.I.NetworkModeShared.IdServerCurrent);
+			var instance = Singleton<ServicePawns>.I.Instances.FindAs(_ => _.IdModel == IdModel);
+			var idsUser = new CxId[4];
+			var idUserCurrent = Singleton<ServiceNetwork>.I.NetworkModeShared.IdServerCurrent;
+			var users = Singleton<ServiceUI>.I.ModelsUser.GetRecentForHost(idsUser, idUserCurrent);
+			var isConditions = users < 4 && instance == null;
 
-			$"pawn create conditions ({users < 4 && instance == null}): {(instance == null ? "no pawn" : instance.IdModel.ShortForm())}; users: {users}".Log();
-			
+			var notionPawn = instance == null ? "no pawn" : instance.IdModel.ShortForm();
+			$"pawn create conditions ({isConditions}): {notionPawn}; users: {users}".Log();
+
 			return users < 4 && instance == null;
 		}
 
 		public void Execute(CompPawnSpawners context)
 		{
-			context.Schedule(context.TaskSpawnForLobby(Model));
+			var model = Singleton<ServiceUI>.I.ModelsUser.Get(IdModel, out var contains);
+			if(contains)
+			{
+				context.Schedule(context.TaskSpawnForLobby(model));
+			}
 		}
 	}
 
@@ -91,6 +120,8 @@ namespace BH.Components
 
 		public void Execute(CompPawnSpawners context)
 		{
+			throw new NotImplementedException();
+
 			var queue = Singleton<ServicePawns>.I.Instances;
 			var size = queue.Count;
 			for(var index = 0; index < size; index++)
@@ -106,14 +137,15 @@ namespace BH.Components
 				}
 			}
 
-			if(Model != null)
+			if(Model.IdHost.IsEmpty)
 			{
-				var buffer = new ModelViewUser[4];
-				var users = Singleton<ServiceUI>.I.ModelsUser.GetRecent(buffer, Model.IdHost);
+				var buffer = new CxId[4];
+				var users = Singleton<ServiceUI>.I.ModelsUser.GetRecentForHost(buffer, Model.IdHost);
+				var isUserCurrent = Singleton<ServiceNetwork>.I.IdCurrentUser;
 				for(var index = 0; index < users; index++)
 				{
-					var modelUser = buffer[index];
-					if(modelUser.IdUser == Singleton<ServiceNetwork>.I.IdCurrentUser)
+					var idUser = buffer[index];
+					if(idUser == isUserCurrent)
 					{
 						continue;
 					}
@@ -121,38 +153,10 @@ namespace BH.Components
 					Singleton<ServicePawns>.I.Events.Enqueue(
 						new CmdPawnLobbyCreate
 						{
-							Model = modelUser,
+							IdModel = idUser,
 						});
 				}
 			}
 		}
-	}
-
-	public sealed class CmdPawnLobbySetUpdate : ICommand<CompPawnSpawners>
-	{
-		public ModelViewServer Model;
-
-		public bool Assert(CompPawnSpawners context)
-		{
-			return true;
-		}
-
-		public void Execute(CompPawnSpawners context)
-		{
-			"not implemented".LogWarning();
-		}
-	}
-
-	public sealed class CmdPawnGameCreate : ICommand<CompPawnSpawners>
-	{
-		public ModelViewUser Model;
-
-		public bool Assert(CompPawnSpawners context)
-		{
-			//? ?
-			return true;
-		}
-
-		public void Execute(CompPawnSpawners context) { }
 	}
 }

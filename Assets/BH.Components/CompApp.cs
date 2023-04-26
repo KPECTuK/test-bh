@@ -22,6 +22,8 @@ namespace BH.Components
 			Singleton<ServiceCameras>.I.Reset();
 			Singleton<ServiceUI>.I.Reset();
 			Singleton<ServiceNetwork>.I.Reset();
+			Singleton<ServiceDiscoveryClientSide<Request, ResponseServer>>.I.Reset();
+			Singleton<ServiceDiscoveryServerSide<Request, ResponseServer>>.I.Reset();
 			Singleton<ServicePawns>.I.Reset();
 
 			"initialized: app".Log();
@@ -32,6 +34,8 @@ namespace BH.Components
 			// TODO: separate script: the execution order to use
 
 			Singleton<ServicePawns>.Dispose();
+			Singleton<ServiceDiscoveryServerSide<Request, ResponseServer>>.Dispose();
+			Singleton<ServiceDiscoveryClientSide<Request, ResponseServer>>.Dispose();
 			Singleton<ServiceNetwork>.Dispose();
 			Singleton<ServiceUI>.Dispose();
 			Singleton<ServiceCameras>.Dispose();

@@ -61,9 +61,8 @@ namespace BH.Components
 
 		public CxId IdServerCurrent =>
 			Singleton<ServiceUI>.I.ModelsUser
-				.FindAs(_ => _.IdUser == Singleton<ServiceNetwork>.I.IdCurrentUser)
-				?.IdAtHost ??
-			CxId.Empty;
+				.Find(_ => _.IdUser == Singleton<ServiceNetwork>.I.IdCurrentUser, out var contains)
+				.IdHostAt;
 
 		public void Enable()
 		{
@@ -72,40 +71,34 @@ namespace BH.Components
 			Discovery.OnServerLost = OnServerLost;
 
 			Singleton<ServiceUI>.I.Events.Enqueue(
-				new CmdViewLobbyClear { KeepSelfInServiceServer = false });
+				new CmdViewLobbyModeChange<SchedulerTaskModelServer>()
+					.BuildForAll(
+						Singleton<ServiceUI>.I.ModelsServer,
+						Singleton<ServiceUI>.I.ModelsUser));
 
-			// build self user, IdAtHost is currently selected
+			Singleton<ServiceUI>.I.ModelsUser.ToText("will call clear <b><color=white>(user)</color></b> in condition").Log();
+			Singleton<ServiceUI>.I.ModelsUser.Clear();
+			Singleton<ServiceUI>.I.ModelsServer.ToText("will call clear <b><color=white>(server)</color></b> in condition").Log();
+			Singleton<ServiceUI>.I.ModelsServer.Clear();
 
-			var modelUser = Singleton<ServiceUI>.I.ModelsUser.GetById(Singleton<ServiceNetwork>.I.IdCurrentUser);
-			if(modelUser == null)
+			// build self user, IdHostAt means currently selected
+			var idHostAt = CxId.Empty;
+			var idUser = Singleton<ServiceNetwork>.I.IdCurrentUser;
+			var desc = new ResponseUser
 			{
-				modelUser = new ModelViewUser
-				{
-					IdUser = Singleton<ServiceNetwork>.I.IdCurrentUser,
-					IdAtHost = CxId.Empty,
-					IsReady = false,
-					IdCamera = CxId.Empty,
-					IdFeature = CxId.Empty,
-					LastUpdated = DateTime.UtcNow,
-					FirstUpdated = DateTime.UtcNow,
-				};
+				IdUser = idUser,
+				IsReady = false,
+				IdFeature = Singleton<ServicePawns>.I.GetNextFeatureAvailableTo(idUser),
+			};
 
-				Singleton<ServiceUI>.I.ModelsUser.Enqueue(modelUser);
-
-				Singleton<ServiceUI>.I.ModelsUser.ToText( $"append <b><color=white>(user)</color></b>: {modelUser}").Log();
-			}
-			else
+			if(ExtensionsView.TryAppendUser(ref desc, ref idHostAt, out idUser))
 			{
-				modelUser.IdAtHost = CxId.Empty;
-
-				Singleton<ServiceUI>.I.ModelsUser.ToText( $"update <b><color=white>(user)</color></b>: {modelUser}").Log();
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserAppend
+					{
+						IdModel = idUser,
+					});
 			}
-
-			Singleton<ServicePawns>.I.Events.Enqueue(
-				new CmdPawnLobbyCreate
-				{
-					Model = modelUser,
-				});
 
 			Discovery.StartDiscoveryClient();
 		}
@@ -121,235 +114,184 @@ namespace BH.Components
 			Discovery.OnServerLost = null;
 		}
 
-		private void OnServerFound(Response response, IPEndPoint epResponseFrom, Uri uriFrom)
+		private void OnServerFound(ResponseServer response, IPEndPoint epResponseFrom, Uri uriFrom)
 		{
-			var modelServer = new ModelViewServer
+			if(ExtensionsView.TryAppendServer(ref response, epResponseFrom, uriFrom, out var idServer))
 			{
-				IdOwner = response.IdOwner,
-				IdHost = response.IdHost,
-				PlayersTotal = response.ServerUsersReady,
-				LastUpdated = DateTime.UtcNow,
-				HostIp = epResponseFrom,
-				HostUri = uriFrom,
-			};
-
-			Singleton<ServiceUI>.I.ModelsServer.Enqueue(modelServer);
-
-			Singleton<ServiceUI>.I.ModelsServer.ToText($"append <b><color=white>(server)</color></b>: {modelServer}").Log();
-
-			Singleton<ServiceUI>.I.Events.Enqueue(
-				new CmdViewLobbyServerAppend
-				{
-					Model = modelServer,
-				});
-
-			UpdateUsers(response);
-
-			// not selected, no need to update pawns
-		}
-
-		private void OnServerUpdated(Response response)
-		{
-			var modelServer = Singleton<ServiceUI>.I.ModelsServer
-				.GetById(response.IdHost);
-
-			if(modelServer == null)
-			{
-				throw new Exception($"server model is not found: {response.IdHost}");
-			}
-
-			modelServer.PlayersTotal = response.ServerUsersTotal;
-
-			Singleton<ServiceUI>.I.ModelsServer.ToText($"update <b><color=white>(server)</color></b>: {modelServer}").Log();
-
-			Singleton<ServiceUI>.I.Events.Enqueue(
-				new CmdViewLobbyServerUpdate
-				{
-					Model = modelServer,
-				});
-
-			UpdateUsers(response);
-
-			var modelUser = Singleton<ServiceUI>.I.ModelsUser
-				.GetById(Singleton<ServiceNetwork>.I.IdCurrentUser);
-			if(modelUser.IdAtHost == modelServer.IdHost)
-			{
-				Singleton<ServicePawns>.I.Events.Enqueue(
-					new CmdPawnLobbySetUpdate
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyServerAppend
 					{
-						Model = modelServer,
+						IdModel = idServer,
 					});
 			}
+
+			if(ExtensionsView.TryAppendUser(ref response.Owner, ref idServer, out var idUser))
+			{
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserAppend
+					{
+						IdModel = idUser,
+					});
+			}
+
+			MaintainPartyUsers(response);
+		}
+
+		private void OnServerUpdated(ResponseServer response)
+		{
+			if(ExtensionsView.TryUpdateServer(ref response, out var idServer))
+			{
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyServerUpdate
+					{
+						IdModel = idServer,
+					});
+			}
+
+			if(ExtensionsView.TryUpdateUser(ref response.Owner, out var idUser))
+			{
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserUpdate
+					{
+						IdModel = idUser,
+					});
+			}
+
+			MaintainPartyUsers(response);
 		}
 
 		private void OnServerLost(CxId idServer)
 		{
-			var modelServer = Singleton<ServiceUI>.I.ModelsServer.RemoveById(idServer);
-
-			Singleton<ServiceUI>.I.ModelsServer.ToText($"remove <b><color=white>(server)</color></b>: {modelServer}").Log();
-
-			Singleton<ServiceUI>.I.Events.Enqueue(
-				new CmdViewLobbyServerRemove
-				{
-					Model = modelServer,
-				});
+			if(ExtensionsView.TryRemoveServer(idServer))
+			{
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyServerRemove
+					{
+						IdModel = idServer,
+					});
+			}
 
 			// remove all pawns connected except self
-			var queue = Singleton<ServiceUI>.I.ModelsUser;
-			var size = queue.Count;
+			var set = Singleton<ServiceUI>.I.ModelsUser;
+			var size = set.Count;
 			for(var index = 0; index < size; index++)
 			{
-				var modelUser = queue.Dequeue();
+				var modelUser = set.Dequeue(out var contains);
 
 				// stay intact: local user, update its focus on server
 				if(modelUser.IdUser == Singleton<ServiceNetwork>.I.IdCurrentUser)
 				{
-					queue.Enqueue(modelUser);
-					if(modelUser.IdAtHost == modelServer.IdHost)
-					{
-						modelUser.IdAtHost = CxId.Empty;
-					}
+					modelUser.IdHostAt = CxId.Empty;
+
+					set.Enqueue(modelUser);
+
+					Singleton<ServiceUI>.I.Events.Enqueue(
+						new CmdViewLobbyUserUpdate
+						{
+							IdModel = modelUser.IdUser,
+						});
 
 					continue;
 				}
 
 				// stay intact: users from another hosts
-				if(modelUser.IdAtHost != modelServer.IdHost)
+				if(modelUser.IdHostAt != idServer)
 				{
-					queue.Enqueue(modelUser);
-
+					set.Enqueue(modelUser);
 					continue;
 				}
 
 				Singleton<ServiceUI>.I.ModelsUser.ToText($"remove <b><color=white>(user)</color></b>: {modelUser}").Log();
+
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserRemove
+					{
+						IdModel = modelUser.IdUser,
+					});
 			}
 
-			Singleton<ServicePawns>.I.Events.Enqueue(
-				new CmdPawnLobbySetChangeTo
-				{
-					Model = null,
-				});
+			set.DeFragment();
 		}
 
-		private void UpdateUsers(Response response)
+		private void MaintainPartyUsers(ResponseServer response)
 		{
-			var queue = Singleton<ServiceUI>.I.ModelsUser;
-			var size = queue.Count;
-
-			// update
-			for(var index = 0; index < size; index++)
+			if(ExtensionsView.TryUpdateUser(ref response.Party_01, out var idUser))
 			{
-				var modelUser = queue.Dequeue();
-				queue.Enqueue(modelUser);
+				response.Party_01 = default;
 
-				if(modelUser.IdUser == response.IdParty_03)
-				{
-					modelUser.IdUser = response.IdParty_03;
-					modelUser.IsReady = response.IsReady_03;
-					modelUser.IdFeature = response.IdFeature_03;
-					// no need to update others (local assignment)
-
-					Singleton<ServiceUI>.I.ModelsUser.ToText($"update <b><color=white>(user)</color></b>: {modelUser})").Log();
-
-					response.IdParty_03 = CxId.Empty;
-
-					Singleton<ServiceUI>.I.Events.Enqueue(
-						new CmdViewLobbyUserUpdate
-						{
-							Model = modelUser,
-						});
-				}
-				if(modelUser.IdUser == response.IdParty_02)
-				{
-					modelUser.IdUser = response.IdParty_02;
-					modelUser.IsReady = response.IsReady_02;
-					modelUser.IdFeature = response.IdFeature_02;
-					// no need to update others (local assignment)
-
-					Singleton<ServiceUI>.I.ModelsUser.ToText($"update <b><color=white>(user)</color></b>: {modelUser}").Log();
-
-					response.IdParty_02 = CxId.Empty;
-
-					Singleton<ServiceUI>.I.Events.Enqueue(
-						new CmdViewLobbyUserUpdate
-						{
-							Model = modelUser,
-						});
-				}
-				if(modelUser.IdUser == response.IdParty_01)
-				{
-					modelUser.IdUser = response.IdParty_01;
-					modelUser.IsReady = response.IsReady_01;
-					modelUser.IdFeature = response.IdFeature_01;
-					// no need to update others (local assignment)
-
-					Singleton<ServiceUI>.I.ModelsUser.ToText($"update <b><color=white>(user)</color></b>: {modelUser}").Log();
-
-					response.IdParty_01 = CxId.Empty;
-
-					Singleton<ServiceUI>.I.Events.Enqueue(
-						new CmdViewLobbyUserUpdate
-						{
-							Model = modelUser,
-						});
-				}
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserUpdate
+					{
+						IdModel = idUser,
+					});
 			}
 
-			// delete: remove on game start and server lost
-
-			// append
+			if(ExtensionsView.TryUpdateUser(ref response.Party_02, out idUser))
 			{
-				if(!response.IdParty_03.IsEmpty)
-				{
-					var modelUser = new ModelViewUser
+				response.Party_02 = default;
+
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserUpdate
 					{
-						IdUser = response.IdParty_03,
-						IsReady = response.IsReady_03,
-						IdFeature = response.IdFeature_03,
-						IdCamera = CxId.Empty,
-						FirstUpdated = DateTime.UtcNow,
-						LastUpdated = DateTime.UtcNow,
-						IdAtHost = response.IdHost,
-					};
+						IdModel = idUser,
+					});
+			}
 
-					Singleton<ServiceUI>.I.ModelsUser.Enqueue(modelUser);
+			if(ExtensionsView.TryUpdateUser(ref response.Party_03, out idUser))
+			{
+				response.Party_03 = default;
 
-					Singleton<ServiceUI>.I.ModelsUser.ToText($"append <b><color=white>(user)</color></b>: {modelUser}").Log();
-				}
-				if(!response.IdParty_02.IsEmpty)
-				{
-					var modelUser = new ModelViewUser
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserUpdate
 					{
-						IdUser = response.IdParty_02,
-						IsReady = response.IsReady_02,
-						IdFeature = response.IdFeature_02,
-						IdCamera = CxId.Empty,
-						FirstUpdated = DateTime.UtcNow,
-						LastUpdated = DateTime.UtcNow,
-						IdAtHost = response.IdHost,
-					};
+						IdModel = idUser,
+					});
+			}
 
-					Singleton<ServiceUI>.I.ModelsUser.Enqueue(modelUser);
+			if(ExtensionsView.TryAppendUser(ref response.Party_01, ref response.IdHost, out idUser))
+			{
+				response.Party_01 = default;
 
-					Singleton<ServiceUI>.I.ModelsUser.ToText($"append <b><color=white>(user)</color></b>: {modelUser}").Log();
-				}
-				if(!response.IdParty_01.IsEmpty)
-				{
-					var modelUser = new ModelViewUser
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserAppend
 					{
-						IdUser = response.IdParty_01,
-						IsReady = response.IsReady_01,
-						IdFeature = response.IdFeature_01,
-						IdCamera = CxId.Empty,
-						FirstUpdated = DateTime.UtcNow,
-						LastUpdated = DateTime.UtcNow,
-						IdAtHost = response.IdHost,
-					};
+						IdModel = idUser,
+					});
+			}
 
-					Singleton<ServiceUI>.I.ModelsUser.Enqueue(modelUser);
+			if(ExtensionsView.TryAppendUser(ref response.Party_02, ref response.IdHost, out idUser))
+			{
+				response.Party_01 = default;
 
-					Singleton<ServiceUI>.I.ModelsUser.ToText($"append <b><color=white>(user)</color></b>: {modelUser}").Log();
-				}
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserAppend
+					{
+						IdModel = idUser,
+					});
+			}
+
+			if(ExtensionsView.TryAppendUser(ref response.Party_03, ref response.IdHost, out idUser))
+			{
+				response.Party_01 = default;
+
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserAppend
+					{
+						IdModel = idUser,
+					});
+			}
+
+			if(!response.Party_01.IdUser.IsEmpty)
+			{
+				$"NO operation performed for <color=white>(user)</color> model: {response.Party_01.IdUser}".Log();
+			}
+			if(!response.Party_02.IdUser.IsEmpty)
+			{
+				$"NO operation performed for <color=white>(user)</color> model: {response.Party_02.IdUser}".Log();
+			}
+			if(!response.Party_03.IdUser.IsEmpty)
+			{
+				$"NO operation performed for <color=white>(user)</color> model: {response.Party_03.IdUser}".Log();
 			}
 		}
 	}
@@ -368,74 +310,49 @@ namespace BH.Components
 			Discovery.OnUserLost = OnUserLost;
 
 			Singleton<ServiceUI>.I.Events.Enqueue(
-				new CmdViewLobbyClear());
+				new CmdViewLobbyModeChange<SchedulerTaskModelUser>()
+					.BuildForAll(
+						Singleton<ServiceUI>.I.ModelsServer,
+						Singleton<ServiceUI>.I.ModelsUser));
 
-			// append user self
-			var modelUser = Singleton<ServiceUI>.I.ModelsUser.GetById(Singleton<ServiceNetwork>.I.IdCurrentUser);
-			if(modelUser == null)
+			Singleton<ServiceUI>.I.ModelsUser.ToText("will call clear <b><color=white>(user)</color></b> in condition").Log();
+			Singleton<ServiceUI>.I.ModelsUser.Clear();
+			Singleton<ServiceUI>.I.ModelsServer.ToText("will call clear <b><color=white>(server)</color></b> in condition").Log();
+			Singleton<ServiceUI>.I.ModelsServer.Clear();
+
+			// TODO: get from discovery
+			IPEndPoint ipLocalAsRemoteEp = null;
+			Uri ipLocalAsRemoteUri = null;
+			var idHostAt = Singleton<ServiceNetwork>.I.IdCurrentMachine;
+			var desc = new ResponseServer
 			{
-				modelUser = new ModelViewUser
+				IdHost = Singleton<ServiceNetwork>.I.IdCurrentMachine,
+				ServerUsersTotal = Singleton<ServiceUI>.I.ModelsUser.Count,
+				Uri = null,
+				Owner = new ResponseUser
 				{
 					IdUser = Singleton<ServiceNetwork>.I.IdCurrentUser,
-					IdAtHost = IdServerCurrent,
-					IsReady = false,
-					IdCamera = CxId.Empty,
 					IdFeature = CxId.Empty,
-					LastUpdated = DateTime.UtcNow,
-					FirstUpdated = DateTime.UtcNow,
-				};
+					IsReady = false,
+				},
+			};
 
-				Singleton<ServiceUI>.I.ModelsUser.Enqueue(modelUser);
-
-				Singleton<ServiceUI>.I.ModelsUser.ToText($"append <b><color=white>(user)</color></b>: {modelUser}").Log();
-			}
-			else
+			if(ExtensionsView.TryAppendServer(ref desc, ipLocalAsRemoteEp, ipLocalAsRemoteUri, out var idServer))
 			{
-				modelUser.IdAtHost = IdServerCurrent;
-
-				Singleton<ServiceUI>.I.ModelsUser.ToText( $"update <b><color=white>(user)</color></b>: {modelUser}").Log();
-			}
-
-			Singleton<ServiceUI>.I.Events.Enqueue(
-				new CmdViewLobbyUserAppend
-				{
-					Model = modelUser,
-				});
-
-			Singleton<ServicePawns>.I.Events.Enqueue(
-				new CmdPawnLobbyCreate
-				{
-					Model = modelUser,
-				});
-
-			// append server self
-			{
-				var modeServer = Singleton<ServiceUI>.I.ModelsServer.GetById(Singleton<ServiceNetwork>.I.IdCurrentMachine);
-				if(modeServer == null)
-				{
-					modeServer = new ModelViewServer
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyServerAppend
 					{
-						IdOwner = Singleton<ServiceNetwork>.I.IdCurrentUser,
-						IdHost = IdServerCurrent,
-						PlayersTotal = Singleton<ServiceUI>.I.ModelsUser.Count,
-						LastUpdated = DateTime.UtcNow,
-						HostIp = null,
-						HostUri = null,
-					};
+						IdModel = idServer,
+					});
+			}
 
-					Singleton<ServiceUI>.I.ModelsServer.Enqueue(modeServer);
-
-					Singleton<ServiceUI>.I.ModelsServer.ToText($"append <b><color=white>(server)</color></b>: {modeServer}").Log();
-				}
-				else
-				{
-					modeServer.IdOwner = Singleton<ServiceNetwork>.I.IdCurrentUser;
-					modeServer.IdHost = IdServerCurrent;
-					modeServer.PlayersTotal = Singleton<ServiceUI>.I.ModelsUser.Count;
-					modeServer.LastUpdated = DateTime.UtcNow;
-
-					Singleton<ServiceUI>.I.ModelsServer.ToText($"update <b><color=white>(server)</color></b>: {modeServer}").Log();
-				}
+			if(ExtensionsView.TryAppendUser(ref desc.Owner, ref idHostAt, out var idUser))
+			{
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserAppend
+					{
+						IdModel = idUser,
+					});
 			}
 
 			Discovery.StartDiscoveryServer();
@@ -454,71 +371,53 @@ namespace BH.Components
 
 		private void OnUserFound(Request request, IPEndPoint epResponseFrom)
 		{
-			var modelUser = new ModelViewUser
+			var idHost = IdServerCurrent;
+			var desc = new ResponseUser
 			{
-				IdUser = request.IdClientUser,
-				IsReady = request.IsReady,
-				IdCamera = CxId.Empty,
-				IdFeature = Singleton<ServicePawns>.I.GetNextFeatureAvailable(),
-				LastUpdated = DateTime.UtcNow,
-				FirstUpdated = DateTime.UtcNow,
-				IdAtHost = IdServerCurrent,
+				IdUser = request.IdUser,
+				IdFeature = Singleton<ServicePawns>.I.GetNextFeatureAvailableTo(request.IdUser),
+				IsReady = false,
 			};
 
-			Singleton<ServiceUI>.I.ModelsUser.Enqueue(modelUser);
-
-			Singleton<ServiceUI>.I.ModelsUser.ToText($"append <b><color=white>(user)</color></b>: {modelUser}").Log();
-
-			Singleton<ServiceUI>.I.Events.Enqueue(
-				new CmdViewLobbyUserAppend
-				{
-					Model = modelUser,
-				});
-
-			Singleton<ServicePawns>.I.Events.Enqueue(
-				new CmdPawnLobbyCreate
-				{
-					Model = modelUser,
-				});
+			if(ExtensionsView.TryAppendUser(ref desc, ref idHost, out var idUser))
+			{
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserAppend
+					{
+						IdModel = idUser,
+					});
+			}
 		}
 
 		private void OnUserUpdated(Request request)
 		{
-			var modelUser = Singleton<ServiceUI>.I.ModelsUser.GetById(request.IdClientUser);
-
-			if(modelUser == null)
+			var desc = new ResponseUser
 			{
-				throw new Exception($"user model is not found: {request.IdClientUser}");
+				IdUser = request.IdUser,
+				IdFeature = Singleton<ServicePawns>.I.GetNextFeatureAvailableTo(request.IdUser),
+				IsReady = request.IsReady,
+			};
+
+			if(ExtensionsView.TryUpdateUser(ref desc, out var idUser))
+			{
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserUpdate
+					{
+						IdModel = idUser,
+					});
 			}
-
-			modelUser.IsReady = request.IsReady;
-
-			Singleton<ServiceUI>.I.ModelsUser.ToText($"update <b><color=white>(user)</color></b>: {modelUser})").Log();
-
-			Singleton<ServiceUI>.I.Events.Enqueue(
-				new CmdViewLobbyUserUpdate
-				{
-					Model = modelUser,
-				});
 		}
 
 		private void OnUserLost(CxId idUser)
 		{
-			var modelUser = Singleton<ServiceUI>.I.ModelsUser.RemoveById(idUser);
-
-			Singleton<ServiceUI>.I.ModelsUser.ToText($"remove <b><color=white>(user)</color></b>: {modelUser})").Log();
-
-			Singleton<ServiceUI>.I.Events.Enqueue(
-				new CmdViewLobbyUserRemove
-				{
-					Model = modelUser,
-				});
-
-			Singleton<ServicePawns>.I.Events.Enqueue(
-				new CmdPawnDestroy
-				{
-					Model = modelUser,
-				});
+			if(ExtensionsView.TryRemoveUser(idUser))
+			{
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserRemove
+					{
+						IdModel = idUser,
+					});
+			}
 		}
 	}
 
@@ -539,7 +438,8 @@ namespace BH.Components
 			Target.Manager = context.GetComponent<CompNetworkManager>();
 			Target.Discovery = context.GetComponent<CompNetworkDiscovery>();
 
-			$"network mode start changing from: <color=#0071A9>{Target.GetType().NameNice()}</color>".Log();
+			var previous = Singleton<ServiceNetwork>.I.NetworkModeShared;
+			$"network mode start changing from: <color=#0071A9>{previous?.GetType().NameNice() ?? "unset"}</color>".Log();
 
 			Singleton<ServiceNetwork>.I.NetworkModeShared?.Disable();
 			Singleton<ServiceNetwork>.I.NetworkModeShared = Target;
@@ -556,9 +456,8 @@ namespace BH.Components
 
 		public CxId IdServerCurrent =>
 			Singleton<ServiceUI>.I.ModelsUser
-				.FindAs(_ => _.IdUser == Singleton<ServiceNetwork>.I.IdCurrentUser)
-				?.IdAtHost ??
-			CxId.Empty;
+				.Find(_ => _.IdUser == Singleton<ServiceNetwork>.I.IdCurrentUser, out var contains)
+				.IdHostAt;
 
 		public void Enable() { }
 

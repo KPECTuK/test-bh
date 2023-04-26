@@ -4,51 +4,62 @@ using BH.Model;
 
 namespace BH.Components
 {
-	public sealed class ModelViewServer : IEquatable<ModelViewServer>
+	public struct ModelViewServer : IEquatable<CxId>
 	{
+		/// <summary> immutable </summary>
 		public CxId IdHost;
 		public CxId IdOwner;
-		public int PlayersTotal;
+		public int ServerUsersTotal;
 
 		public IPEndPoint HostIp;
 		public Uri HostUri;
 
 		public DateTime LastUpdated;
 
-		public string RenderServer => $"server: {IdHost.ShortForm()}";
-		public string RenderOwner => $"owner: {IdOwner.ShortForm()}";
-		public string RenderPlayers => $"players: {PlayersTotal}";
+		public string RenderServer => IdHost.ShortForm(false);
+		public string RenderOwner => IdOwner.ShortForm(false);
+		public string RenderPlayers => $"{ServerUsersTotal}";
+
+		public bool IsEmpty => IdHost.IsEmpty;
 
 		public override string ToString()
 		{
 			return $"( host: {IdHost.ShortForm()} owner: {IdOwner.ShortForm()} )";
 		}
 
-		public bool Equals(ModelViewServer other)
+		public bool Equals(CxId other)
 		{
-			if(ReferenceEquals(null, other))
-			{
-				return false;
-			}
-
-			if(ReferenceEquals(this, other))
-			{
-				return true;
-			}
-
-			return IdHost == other.IdHost;
+			return IdHost == other;
 		}
 
 		public override bool Equals(object @object)
 		{
-			return
-				ReferenceEquals(this, @object) ||
-				@object is ModelViewServer other && Equals(other);
+			return @object is ModelViewServer other && Equals(other.IdHost);
 		}
 
 		public override int GetHashCode()
 		{
-			throw new NotSupportedException("not applicable for hash collections");
+			return IdHost.GetHashCode();
+		}
+
+		public bool UpdateFrom(ref ResponseServer response)
+		{
+			var result = false;
+			if(IdHost != response.IdHost)
+			{
+				throw new Exception($"trying to update a server with another id: ( input: {response.IdHost} over: {IdHost} )");
+			}
+
+			if(ServerUsersTotal != response.ServerUsersTotal)
+			{
+				result = true;
+
+				ServerUsersTotal = response.ServerUsersTotal;
+			}
+
+			LastUpdated = DateTime.UtcNow;
+
+			return result;
 		}
 	}
 }

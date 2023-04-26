@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace BH.Components
+namespace BH.Model
 {
 	public interface IService : IDisposable
 	{

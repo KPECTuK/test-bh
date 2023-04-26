@@ -61,7 +61,7 @@ namespace BH.Components.Editor
 			{
 				command = new CmdViewLobbyServerAppend()
 				{
-					Model = new ModelViewServer(),
+					IdModel = CxId.Empty,
 				};
 			}
 			
@@ -69,7 +69,7 @@ namespace BH.Components.Editor
 			{
 				command = new CmdViewLobbyUserAppend()
 				{
-					Model = new ModelViewUser(),
+					IdModel = CxId.Empty,
 				};
 			}
 
@@ -92,7 +92,7 @@ namespace BH.Components.Editor
 			{
 				command = new CmdViewLobbyServerRemove()
 				{
-					Model = Singleton<ServiceUI>.I.ModelsServer.FirstOrDefault(),
+					IdModel = Singleton<ServiceUI>.I.ModelsServer.FirstOrDefault().IdHost,
 				};
 			}
 			
@@ -100,7 +100,7 @@ namespace BH.Components.Editor
 			{
 				command = new CmdViewLobbyUserRemove()
 				{
-					Model = Singleton<ServiceUI>.I.ModelsUser.FirstOrDefault(),
+					IdModel = Singleton<ServiceUI>.I.ModelsUser.FirstOrDefault().IdUser,
 				};
 			}
 

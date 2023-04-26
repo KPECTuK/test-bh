@@ -8,41 +8,55 @@ namespace BH.Components
 {
 	public sealed class CompScreenLobbyBtnServer : CompScreenLobbyBtnBase
 	{
-		[NonSerialized] public ModelViewServer Model;
 		[NonSerialized] public Action<ModelViewServer> OnClick;
 
 		public TextMeshProUGUI TextOwner;
 		public TextMeshProUGUI TextServer;
 		public TextMeshProUGUI TextPlayers;
-
 		public Image Back;
 
 		private Color _initial;
+
+		public override CxId IdModel { get; set; }
 
 		private void Awake()
 		{
 			_initial = Back.color;
 
 			var button = GetComponent<Button>();
-			button.onClick.AddListener(() => { OnClick?.Invoke(Model); });
+			button.onClick.AddListener(() =>
+			{
+				ref var model = ref Singleton<ServiceUI>.I.ModelsServer.Get(IdModel, out var contains);
+				OnClick?.Invoke(model);
+			});
 		}
 
 		public override void UpdateView()
 		{
-			TextServer.text = Model.RenderServer;
-			TextOwner.text = Model.RenderOwner;
-			TextPlayers.text = Model.RenderPlayers;
+			ref var modelServer = ref Singleton<ServiceUI>.I.ModelsServer.Get(IdModel, out var contains);
+			if(!contains)
+			{
+				throw new Exception($"not contains: mode server {IdModel}");
+			}
 
-			var modelUser = Singleton<ServiceUI>.I.ModelsUser
-				.GetById(Singleton<ServiceNetwork>.I.IdCurrentUser);
-			Back.color = Model.IdHost == modelUser.IdAtHost
-				? Color.Lerp(Color.yellow, Color.black, .5f)
+			TextServer.text = modelServer.RenderServer;
+			TextOwner.text = modelServer.RenderOwner;
+			TextPlayers.text = modelServer.RenderPlayers;
+
+			var modelUser = Singleton<ServiceUI>.I.ModelsUser.Get(Singleton<ServiceNetwork>.I.IdCurrentUser, out contains);
+			if(!contains)
+			{
+				throw new Exception($"not contains: model user {Singleton<ServiceNetwork>.I.IdCurrentUser}");
+			}
+
+			Back.color = IdModel == modelUser.IdHostAt
+				? Color.Lerp(Color.yellow, Color.black, .2f)
 				: _initial;
 		}
 
-		public override bool IsModel(object model)
+		public override void ReleaseAllCallbacks()
 		{
-			return Model.Equals(model);
+			OnClick = null;
 		}
 	}
 }

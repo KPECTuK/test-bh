@@ -1,5 +1,7 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using BH.Model;
 using UnityEngine;
 
@@ -19,9 +21,22 @@ namespace BH.Components
 
 		private RectTransform _transform;
 
+		private IScheduler _scheduler;
+
+		public IScheduler Scheduler => _scheduler ?? new SchedulerTaskDefault();
+
 		private void Awake()
 		{
 			_transform = GetComponent<RectTransform>();
+		}
+
+		public void SetScheduler<T>() where T : IScheduler, new()
+		{
+			_scheduler = new T();
+			if(_scheduler is SchedulerTaskBase cast)
+			{
+				cast.QueueTasks = _tasks;
+			}
 		}
 
 		private Vector3 GetPointLocalOnAnimLine(float normalized)
@@ -86,42 +101,37 @@ namespace BH.Components
 			}
 		}
 
-		public void Schedule(IEnumerator task)
-		{
-			_tasks.Enqueue(task);
-		}
-
-		public IEnumerator TaskAppendButtonAnim(ModelViewServer model)
+		public IEnumerator TaskAppendButtonServerAnim(CxId idModel)
 		{
 			var load = Singleton<ServiceResources>.I.LoadAssetAsLibrary<CompScreenLobbyBtnServer>(
 				ServiceResources.ID_RESOURCE_UI_LOBBY_ITEM_SERVER_S,
 				transform,
 				CxOrigin.Identity);
 
-			load.Model = model;
+			load.IdModel = idModel;
 			ButtonWidgetInit(load);
 			load.OnClick = OnButtonItem;
 
 			yield break;
 		}
 
-		public IEnumerator TaskAppendButtonAnim(ModelViewUser model)
+		public IEnumerator TaskAppendButtonUserAnim(CxId idModel)
 		{
 			var load = Singleton<ServiceResources>.I.LoadAssetAsLibrary<CompScreenLobbyBtnUser>(
 				ServiceResources.ID_RESOURCE_UI_LOBBY_ITEM_USER_S,
 				transform,
 				new CxOrigin());
 
-			load.Model = model;
+			load.IdModel = idModel;
 			ButtonWidgetInit(load);
 			load.OnClick = OnButtonItem;
 
 			yield break;
 		}
 
-		public IEnumerator TaskUpdateButtonAnim(ModelViewServer model)
+		public IEnumerator TaskUpdateButtonAnim(CxId idModel)
 		{
-			var button = _buttons.Find(_ => _.IsModel(model));
+			var button = _buttons.Find(_ => _.IdModel == idModel);
 			if(button != null)
 			{
 				button.UpdateView();
@@ -130,67 +140,34 @@ namespace BH.Components
 			yield break;
 		}
 
-		public IEnumerator TaskUpdateButtonAnim(ModelViewUser model)
+		public IEnumerator TaskRemoveButtonAnim(CxId idModel)
 		{
-			var button = _buttons.Find(_ => _.IsModel(model));
+			var button = _buttons.Find(_ => _.IdModel == idModel);
 			if(button != null)
 			{
-				button.UpdateView();
+				button.ReleaseAllCallbacks();
+
+				_buttons.Remove(button);
+
+				var current = 1f;
+				var transformWidget = button.GroupScale;
+				while(current > 0f)
+				{
+					current -= 1f / ButtonSpeedScaleSec * Time.deltaTime;
+					transformWidget.localScale = Vector3.one * current;
+
+					yield return null;
+				}
+
+				Destroy(button.gameObject);
 			}
-
-			yield break;
-		}
-
-		public IEnumerator TaskRemoveButtonAnim(ModelViewServer model)
-		{
-			var button = _buttons.Find(_ => _.IsModel(model)) as CompScreenLobbyBtnServer;
-			if(button == null)
+			else
 			{
-				$"button is not found (server): {model.IdHost}".LogWarning();
-
-				yield break;
+				_buttons.ToText(
+						$"button is not found: {idModel.ShortForm()} of buttons:",
+						_ => _.IdModel.ShortForm())
+					.LogWarning();
 			}
-
-			button.OnClick = null;
-
-			var current = 1f;
-			var transformWidget = button.GroupScale;
-			while(current > 0f)
-			{
-				current -= 1f / ButtonSpeedScaleSec * Time.deltaTime;
-				transformWidget.localScale = Vector3.one * current;
-
-				yield return null;
-			}
-
-			_buttons.Remove(button);
-			Destroy(button.gameObject);
-		}
-
-		public IEnumerator TaskRemoveButtonAnim(ModelViewUser model)
-		{
-			var button = _buttons.Find(_ => _.IsModel(model)) as CompScreenLobbyBtnUser;
-			if(button == null)
-			{
-				$"button is not found (user): {model.IdUser}".LogWarning();
-
-				yield break;
-			}
-
-			button.OnClick = null;
-
-			var current = 1f;
-			var transformWidget = button.GroupScale;
-			while(current > 0f)
-			{
-				current -= 1f / ButtonSpeedScaleSec * Time.deltaTime;
-				transformWidget.localScale = Vector3.one * current;
-
-				yield return null;
-			}
-
-			_buttons.Remove(button);
-			Destroy(button.gameObject);
 		}
 
 		public IEnumerator TaskUpdateFocus()
@@ -225,12 +202,18 @@ namespace BH.Components
 		private void OnButtonItem(ModelViewServer model)
 		{
 			"press: 'Server'".Log();
-			
-			var modelUser = Singleton<ServiceUI>.I.ModelsUser
-				.GetById(Singleton<ServiceNetwork>.I.IdCurrentUser);
-			modelUser.IdAtHost = model.IdHost;
 
-			Schedule(TaskUpdateFocus());
+			// TODO: remove routine to VM
+
+			ref var modelUser = ref Singleton<ServiceUI>.I.ModelsUser.Get(Singleton<ServiceNetwork>.I.IdCurrentUser, out var contains);
+			if(!contains)
+			{
+				throw new Exception($"not contains: {model}");
+			}
+
+			modelUser.IdHostAt = model.IdHost;
+
+			_tasks.Enqueue(TaskUpdateFocus());
 
 			Singleton<ServicePawns>.I.Events.Enqueue(
 				new CmdPawnLobbySetChangeTo
@@ -244,6 +227,11 @@ namespace BH.Components
 			"press: 'User'".Log();
 
 			// TODO: remove user from participants
+		}
+
+		public IEnumerable<CxId> GetButtons()
+		{
+			return _buttons.Select(_ => _.IdModel);
 		}
 
 		#if UNITY_EDITOR
@@ -272,5 +260,90 @@ namespace BH.Components
 			}
 		}
 		#endif
+	}
+
+	/// <summary>
+	/// it might be solved by the commands, but it aligned to view, and, more over,
+	/// it could serve as any type of filter\provider, not the type only
+	/// </summary>
+	public interface IScheduler
+	{
+		IScheduler PassThrough { get; }
+
+		void Schedule(CxId idOver, Func<CxId, IEnumerator> taskFactory);
+	}
+
+	public abstract class SchedulerTaskBase
+	{
+		public Queue<IEnumerator> QueueTasks;
+	}
+
+	public sealed class SchedulerTaskModelUser : SchedulerTaskBase, IScheduler
+	{
+		public IScheduler PassThrough => new SchedulerTaskAll { QueueTasks = QueueTasks };
+
+		public void Schedule(CxId idOver, Func<CxId, IEnumerator> taskFactory)
+		{
+			Singleton<ServiceUI>.I.ModelsUser.Get(idOver, out var contains);
+			if(contains)
+			{
+				var name = taskFactory.Method.Name;
+				$"run task '{name}' by scheduler '{GetType().NameNice()}' for {idOver}".Log();
+
+				QueueTasks.Enqueue(taskFactory.Invoke(idOver));
+			}
+			else
+			{
+				var name = taskFactory.Method.Name;
+				$"pass task '{name}' by scheduler '{GetType().NameNice()}' for {idOver}".Log();
+			}
+		}
+	}
+
+	public sealed class SchedulerTaskModelServer : SchedulerTaskBase, IScheduler
+	{
+		public IScheduler PassThrough => new SchedulerTaskAll { QueueTasks = QueueTasks };
+
+		public void Schedule(CxId idOver, Func<CxId, IEnumerator> taskFactory)
+		{
+			Singleton<ServiceUI>.I.ModelsServer.Get(idOver, out var contains);
+			if(contains)
+			{
+				var name = taskFactory.Method.Name;
+				$"run task '{name}' by scheduler '{GetType().NameNice()}' for {idOver}".Log();
+
+				QueueTasks.Enqueue(taskFactory.Invoke(idOver));
+			}
+			else
+			{
+				var name = taskFactory?.Method.Name;
+				$"pass task '{name}' by scheduler '{GetType().NameNice()}' for {idOver}".Log();
+			}
+		}
+	}
+
+	public sealed class SchedulerTaskAll : SchedulerTaskBase, IScheduler
+	{
+		//! avoid loops
+		public IScheduler PassThrough => this;
+
+		public void Schedule(CxId idOver, Func<CxId, IEnumerator> taskFactory)
+		{
+			var name = taskFactory.Method.Name;
+			$"run task '{name}' by scheduler '{GetType().NameNice()}' for {idOver}".Log();
+
+			QueueTasks.Enqueue(taskFactory.Invoke(idOver));
+		}
+	}
+
+	public sealed class SchedulerTaskDefault : IScheduler
+	{
+		public IScheduler PassThrough => throw new NotSupportedException();
+
+		public void Schedule(CxId idOver, Func<CxId, IEnumerator> taskFactory)
+		{
+			var name = taskFactory?.Method.Name;
+			$"pass task '{name}' by default scheduler for {idOver}".Log();
+		}
 	}
 }

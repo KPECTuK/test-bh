@@ -1,4 +1,5 @@
 using System;
+using BH.Model;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -13,8 +14,10 @@ namespace BH.Components
 		[NonSerialized] public Vector2 SizeLocalInitial;
 		[NonSerialized] public Vector3 PositionLocalTarget;
 
-		public abstract bool IsModel(object model);
+		public abstract CxId IdModel { get; set; }
 
 		public abstract void UpdateView();
+
+		public abstract void ReleaseAllCallbacks();
 	}
 }

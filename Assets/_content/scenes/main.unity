@@ -1452,11 +1452,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 01dbb93e72d440e8b6c3f008c1d73323, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  secretHandshake: -1035956651833383665
-  serverBroadcastListenPort: 47777
-  enableActiveDiscovery: 1
-  ActiveDiscoveryInterval: 3
-  BroadcastAddress: 
 --- !u!1 &1149101688
 GameObject:
   m_ObjectHideFlags: 0

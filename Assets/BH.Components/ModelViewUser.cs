@@ -3,13 +3,11 @@ using BH.Model;
 
 namespace BH.Components
 {
-	public sealed class ModelViewUser : IEquatable<ModelViewUser>
+	public struct ModelViewUser : IEquatable<CxId>
 	{
-		public const string CONTENT_STATE_USER_READY_S = "ready";
-		public const string CONTENT_STATE_USER_NOT_READY_S = "not ready";
-
+		/// <summary> immutable </summary>
 		public CxId IdUser;
-		public CxId IdAtHost;
+		public CxId IdHostAt;
 		public CxId IdFeature;
 		public bool IsReady;
 
@@ -18,42 +16,56 @@ namespace BH.Components
 		public DateTime LastUpdated;
 		public DateTime FirstUpdated;
 
-		public string RenderIdUser => $"user: {IdUser.ShortForm()}";
-		public string RenderIsReady =>
-			IsReady
-				? CONTENT_STATE_USER_READY_S
-				: CONTENT_STATE_USER_NOT_READY_S;
+		public bool IsEmpty => IdUser.IsEmpty;
+
+		public string RenderIdHostAt => IdHostAt.ShortForm(false);
+		public string RenderIdUser => IdUser.ShortForm(false);
 
 		public override string ToString()
 		{
-			return $"( id: {IdUser.ShortForm()} at: {IdAtHost.ShortForm()} )";
+			return $"( id: {IdUser.ShortForm()} at: {IdHostAt.ShortForm()} )";
 		}
 
-		public bool Equals(ModelViewUser other)
+		public bool Equals(CxId other)
 		{
-			if(ReferenceEquals(null, other))
-			{
-				return false;
-			}
-
-			if(ReferenceEquals(this, other))
-			{
-				return true;
-			}
-
-			return IdUser == other.IdUser;
+			return IdUser == other;
 		}
 
 		public override bool Equals(object @object)
 		{
-			return
-				ReferenceEquals(this, @object) ||
-				@object is ModelViewUser other && Equals(other);
+			return @object is ModelViewUser other && Equals(other.IdUser);
 		}
 
 		public override int GetHashCode()
 		{
-			throw new NotSupportedException("not applicable for hash collections");
+			return IdUser.GetHashCode();
+		}
+
+		public bool UpdateFrom(ref ResponseUser response)
+		{
+			var result = false;
+			if(IdUser != response.IdUser)
+			{
+				throw new Exception($"trying to update a user with another id: ( input: {response.IdUser} over: {IdUser} )");
+			}
+
+			if(IdFeature != response.IdFeature)
+			{
+				result = true;
+
+				IdFeature = response.IdFeature;
+			}
+
+			if(IsReady != response.IsReady)
+			{
+				result = true;
+
+				IsReady = response.IsReady;
+			}
+
+			LastUpdated = DateTime.UtcNow;
+
+			return result;
 		}
 	}
 }

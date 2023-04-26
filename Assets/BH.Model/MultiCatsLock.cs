@@ -4,7 +4,7 @@
 using System;
 using UnityEngine;
 
-namespace Mirror.Discovery
+namespace BH.Model
 {
 	public sealed class MultiCatsLock : IDisposable
 	{

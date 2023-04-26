@@ -106,7 +106,12 @@ namespace BH.Components
 			"press: 'Ready'".Log();
 
 			// shared by discovery
-			var model = Singleton<ServiceUI>.I.ModelsUser.GetById(Singleton<ServiceNetwork>.I.IdCurrentUser);
+			ref var model = ref Singleton<ServiceUI>.I.ModelsUser.Get(Singleton<ServiceNetwork>.I.IdCurrentUser, out var contains);
+			if(!contains)
+			{
+				throw new Exception("not contains");
+			}
+
 			model.IsReady = !model.IsReady;
 			_textButtonReady.text = model.IsReady
 				? CONTENT_USER_STATE_READY_S
