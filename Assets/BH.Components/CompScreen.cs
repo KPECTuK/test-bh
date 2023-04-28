@@ -1,13 +1,13 @@
 using System;
 using System.Collections;
-using System.Linq;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace BH.Components
 {
 	[RequireComponent(typeof(Canvas))]
 	[RequireComponent(typeof(CanvasGroup))]
-	public class CompScreen : MonoBehaviour
+	public class CompScreen : MonoBehaviour, IWidgetController
 	{
 		//? NOTE: TL; TI;
 		//? NOTE: can dispatch commands through the ui elements tree
@@ -18,22 +18,28 @@ namespace BH.Components
 
 		public float IntervalTrans = .1f;
 
-		private Canvas _canvas;
 		private CanvasGroup _canvasGroup;
 		private CompScreens _controller;
 
-		private Coroutine _transCurrent;
-		private CompScreens.Signal _signalCurrent;
+		private readonly Queue<IEnumerator> _tasks = new();
+
+		private IScheduler _scheduler;
+
+		public IScheduler Scheduler => _scheduler ?? new SchedulerTaskDefault();
+
+		public void SetScheduler<T>() where T : IScheduler, new()
+		{
+			_scheduler = _tasks.BuildScheduler<T>();
+		}
+
+		public void OnWidgetEnable() { }
+
+		public void OnWidgetDisable() { }
 
 		public bool IsActiveScreen => _canvasGroup.interactable;
 
-		public bool IsBusy =>
-			_signalCurrent != null &&
-			GetComponents<IWidgetController>().All(_ => !_.IsBusy);
-
 		private void Awake()
 		{
-			_canvas = GetComponent<Canvas>();
 			_canvasGroup = GetComponent<CanvasGroup>();
 			_controller = GetComponentInParent<CompScreens>();
 
@@ -51,48 +57,16 @@ namespace BH.Components
 			{
 				_controller.UnregisterScreen(this);
 			}
+
+			Scheduler.Clear();
 		}
 
-		public void GoRaise(CompScreens.Signal signal)
+		private void Update()
 		{
-			if(_transCurrent != null)
-			{
-				StopCoroutine(_transCurrent);
-			}
-
-			if(_signalCurrent != null)
-			{
-				_signalCurrent.Is = true;
-			}
-
-			_signalCurrent = signal;
-			_transCurrent = StartCoroutine(Rise(_signalCurrent));
+			_tasks.ExecuteTasksSequentially();
 		}
 
-		public void GoFade(CompScreens.Signal signal)
-		{
-			if(_transCurrent != null)
-			{
-				StopCoroutine(_transCurrent);
-			}
-
-			if(_signalCurrent != null)
-			{
-				_signalCurrent.Is = true;
-			}
-
-			_signalCurrent = signal;
-			_transCurrent = StartCoroutine(Fade(_signalCurrent));
-		}
-
-		public void Init()
-		{
-			_canvasGroup.alpha = 0f;
-			_canvasGroup.interactable = false;
-			_canvasGroup.blocksRaycasts = false;
-		}
-
-		private IEnumerator Rise(CompScreens.Signal signal)
+		public IEnumerator TaskScreenFadeIn()
 		{
 			_canvasGroup.interactable = true;
 			_canvasGroup.blocksRaycasts = true;
@@ -117,16 +91,11 @@ namespace BH.Components
 			var customs = GetComponents<IWidgetController>();
 			for(var index = 0; index < customs.Length; index++)
 			{
-				customs[index].OnScreenEnter();
+				customs[index].OnWidgetEnable();
 			}
-
-			signal.Is = true;
-
-			_signalCurrent = null;
-			_transCurrent = null;
 		}
 
-		private IEnumerator Fade(CompScreens.Signal signal)
+		public IEnumerator TaskScreenFadeOut()
 		{
 			var value = _canvasGroup.alpha;
 			var interval = IntervalTrans < INTERVAL_TRANS_MIN_F
@@ -151,13 +120,8 @@ namespace BH.Components
 			var customs = GetComponents<IWidgetController>();
 			for(var index = 0; index < customs.Length; index++)
 			{
-				customs[index].OnScreenExit();
+				customs[index].OnWidgetDisable();
 			}
-
-			signal.Is = true;
-
-			_signalCurrent = null;
-			_transCurrent = null;
 		}
 	}
 }

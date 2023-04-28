@@ -34,7 +34,7 @@ namespace BH.Components
 
 	// TODO: all contains might be in Assert()
 
-	public class CmdViewScreenChange : ICommand<CompScreens>
+	public class CmdViewScreenChange : ICommandBreak<CompScreens>
 	{
 		public string NameScreen;
 
@@ -46,7 +46,7 @@ namespace BH.Components
 
 		public void Execute(CompScreens context)
 		{
-			context.Schedule(context.TaskScreenChange(NameScreen));
+			context.Scheduler.Schedule(NameScreen, context.TaskScreenChange);
 		}
 	}
 
@@ -72,6 +72,8 @@ namespace BH.Components
 
 			DestroyAllServerButtonsIfAny(controller);
 			DestroyAllUserButtonsIfAny(controller);
+
+			controller.Scheduler.Schedule(controller.TaskUpdateButtons);
 		}
 
 		private void DestroyAllServerButtonsIfAny(CompScreenLobby controller)
@@ -80,7 +82,7 @@ namespace BH.Components
 			for(var index = 0; index < size; index++)
 			{
 				var modelServer = ServersToDelete.Dequeue();
-				controller.Bar.Scheduler.PassThrough.Schedule(modelServer.IdHost, controller.Bar.TaskRemoveButtonAnim);
+				controller.Bar.Scheduler.PassThrough.Schedule(modelServer.IdHost, controller.Bar.TaskRemoveButton);
 			}
 		}
 
@@ -90,7 +92,7 @@ namespace BH.Components
 			for(var index = 0; index < size; index++)
 			{
 				var modelUser = UsersToDelete.Dequeue();
-				controller.Bar.Scheduler.PassThrough.Schedule(modelUser.IdUser, controller.Bar.TaskRemoveButtonAnim);
+				controller.Bar.Scheduler.PassThrough.Schedule(modelUser.IdUser, controller.Bar.TaskRemoveButton);
 			}
 		}
 	}
@@ -99,10 +101,11 @@ namespace BH.Components
 	{
 		public override void Execute(CompScreens context)
 		{
-			base.Execute(context);
-
+			//! queues are not got cleared
 			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
 			controller.Bar.SetScheduler<T>();
+
+			base.Execute(context);
 		}
 	}
 
@@ -119,7 +122,8 @@ namespace BH.Components
 		public void Execute(CompScreens context)
 		{
 			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
-			controller.Bar.Scheduler.Schedule(IdModel, controller.Bar.TaskAppendButtonUserAnim);
+			controller.Bar.Scheduler.Schedule(IdModel, controller.Bar.TaskAppendButtonUser);
+			controller.Scheduler.Schedule(controller.TaskUpdateButtons);
 
 			Singleton<ServicePawns>.I.Events.Enqueue(
 				new CmdPawnLobbyCreate
@@ -142,7 +146,8 @@ namespace BH.Components
 		public void Execute(CompScreens context)
 		{
 			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
-			controller.Bar.Scheduler.Schedule(IdModel, controller.Bar.TaskUpdateButtonAnim);
+			controller.Bar.Scheduler.Schedule(IdModel, controller.Bar.TaskUpdateButton);
+			controller.Scheduler.Schedule(controller.TaskUpdateButtons);
 
 			// TODO: update pawn
 
@@ -156,7 +161,7 @@ namespace BH.Components
 			//		//? should view re-acquire its model
 			//		model.CopyFrom(Model);
 			//		var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
-			//		controller.Bar.Schedule(controller.Bar.TaskUpdateButtonAnim(Model));
+			//		controller.Bar.Schedule(controller.Bar.TaskUpdateButton(Model));
 			//	}
 			//	queue.Enqueue(model);
 			//}
@@ -176,7 +181,8 @@ namespace BH.Components
 		public void Execute(CompScreens context)
 		{
 			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
-			controller.Bar.Scheduler.PassThrough.Schedule(IdModel, controller.Bar.TaskRemoveButtonAnim);
+			controller.Bar.Scheduler.PassThrough.Schedule(IdModel, controller.Bar.TaskRemoveButton);
+			controller.Scheduler.Schedule(controller.TaskUpdateButtons);
 
 			Singleton<ServicePawns>.I.Events.Enqueue(
 				new CmdPawnDestroy
@@ -199,7 +205,10 @@ namespace BH.Components
 		public void Execute(CompScreens context)
 		{
 			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
-			controller.Bar.Scheduler.Schedule(IdModel, controller.Bar.TaskAppendButtonServerAnim);
+			controller.Bar.Scheduler.Schedule(IdModel, controller.Bar.TaskAppendButtonServer);
+
+			//? for server
+			controller.Scheduler.Schedule(controller.TaskUpdateButtons);
 
 			// not selected, no need to update pawns
 			//! no need cause user update will do it
@@ -219,7 +228,10 @@ namespace BH.Components
 		public void Execute(CompScreens context)
 		{
 			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
-			controller.Bar.Scheduler.Schedule(IdModel, controller.Bar.TaskUpdateButtonAnim);
+			controller.Bar.Scheduler.Schedule(IdModel, controller.Bar.TaskUpdateButton);
+
+			//? for server
+			controller.Scheduler.Schedule(controller.TaskUpdateButtons);
 
 			//! no need cause user update will do it
 			//var queue = Singleton<ServiceUI>.I.ModelsServer;
@@ -232,7 +244,7 @@ namespace BH.Components
 			//		//? should view re-acquire its model
 			//		model.CopyFrom(Model);
 			//		var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
-			//		controller.Bar.Schedule(controller.Bar.TaskUpdateButtonAnim(Model));
+			//		controller.Bar.Schedule(controller.Bar.TaskUpdateButton(Model));
 			//	}
 			//	queue.Enqueue(model);
 			//}
@@ -252,7 +264,10 @@ namespace BH.Components
 		public void Execute(CompScreens context)
 		{
 			var controller = context.GetActiveScreen().GetComponent<CompScreenLobby>();
-			controller.Bar.Scheduler.PassThrough.Schedule(IdModel, controller.Bar.TaskRemoveButtonAnim);
+			controller.Bar.Scheduler.PassThrough.Schedule(IdModel, controller.Bar.TaskRemoveButton);
+			
+			//? for server
+			controller.Scheduler.Schedule(controller.TaskUpdateButtons);
 		}
 	}
 }

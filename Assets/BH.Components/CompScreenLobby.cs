@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Text;
 using BH.Model;
 using TMPro;
@@ -10,11 +12,11 @@ namespace BH.Components
 	[RequireComponent(typeof(CompScreen))]
 	public class CompScreenLobby : MonoBehaviour, IWidgetController
 	{
-		private const string CONTENT_MODE_SERVER_S = "SERVER STOP";
-		private const string CONTENT_MODE_CLIENT_S = "SERVER START";
+		private const string CONTENT_MODE_SERVER_S = "IN SERVER MODE";
+		private const string CONTENT_MODE_CLIENT_S = "IN CLIENT MODE";
 
-		private const string CONTENT_USER_STATE_READY_S = "TO BUSY";
-		private const string CONTENT_USER_STATE_NOT_READY_S = "TO READY";
+		private const string CONTENT_USER_STATE_READY_S = "GO TO BUSY";
+		private const string CONTENT_USER_STATE_NOT_READY_S = "GO TO READY";
 
 		public float CameraIntervalSec = 10f;
 
@@ -32,33 +34,48 @@ namespace BH.Components
 
 		private float _screenInitialTime;
 
-		// not implemented: due time limit
-		public bool IsBusy { get; }
+		private readonly Queue<IEnumerator> _tasks = new();
 
-		public void OnScreenEnter()
+		private IScheduler _scheduler;
+
+		public IScheduler Scheduler => _scheduler ?? new SchedulerTaskDefault();
+
+		public void SetScheduler<T>() where T : IScheduler, new()
 		{
+			_scheduler = _tasks.BuildScheduler<T>();
+		}
+
+		public void OnWidgetEnable()
+		{
+			SetScheduler<SchedulerTaskAll>();
+
 			Singleton<ServiceCameras>.I.SetSpectator();
 			_screenInitialTime = Time.time;
 
 			_callbackOnOwn = OnButtonOwn;
 			_callbackOnReady = OnButtonReady;
 
-			_textButtonOwn.text = CONTENT_MODE_CLIENT_S;
 			Singleton<ServiceNetwork>.I.Events.Enqueue(
-				new CmdNetworkModeChange { Target = new NetworkModeLobbyClient() });
+				new CmdNetworkModeChange
+				{
+					Target = new NetworkModeLobbyClient()
+				});
 		}
 
-		public void OnScreenExit()
+		public void OnWidgetDisable()
 		{
 			// exit is to game state only
 
 			_callbackOnOwn = OnButtonOwn;
 			_callbackOnReady = OnButtonReady;
+
+			Scheduler.Clear();
 		}
 
 		private void Awake()
 		{
 			_screen = GetComponent<CompScreen>();
+
 			ButtonOwn.onClick.AddListener(() => { _callbackOnOwn?.Invoke(); });
 			ButtonReady.onClick.AddListener(() => { _callbackOnReady?.Invoke(); });
 
@@ -73,7 +90,9 @@ namespace BH.Components
 				return;
 			}
 
-			UpdateSpectator();
+			_tasks.ExecuteTasksSimultaneously();
+
+			OnUpdateSpectator();
 
 			var idUser = Singleton<ServiceNetwork>.I.IdCurrentUser;
 			var idServerLocal = Singleton<ServiceNetwork>.I.IdCurrentMachine;
@@ -91,7 +110,37 @@ namespace BH.Components
 				.ToString();
 		}
 
-		private void UpdateSpectator()
+		public IEnumerator TaskUpdateButtons()
+		{
+			var idUser = Singleton<ServiceNetwork>.I.IdCurrentUser;
+			var model = Singleton<ServiceUI>.I.ModelsUser.Get(idUser, out var contains);
+			if(!contains)
+			{
+				throw new Exception("not contains");
+			}
+
+			_textButtonReady.text = model.IsReady
+				? CONTENT_USER_STATE_READY_S
+				: CONTENT_USER_STATE_NOT_READY_S;
+
+			// ReSharper disable once ConvertIfStatementToSwitchExpression
+			if(Singleton<ServiceNetwork>.I.NetworkModeShared is NetworkModeLobbyServer)
+			{
+				_textButtonOwn.text = CONTENT_MODE_SERVER_S;
+			}
+
+			if(Singleton<ServiceNetwork>.I.NetworkModeShared is NetworkModeLobbyClient)
+			{
+				_textButtonOwn.text = CONTENT_MODE_CLIENT_S;
+			}
+
+			yield break;
+		}
+
+		/// <summary>
+		/// might be a task also
+		/// </summary>
+		private void OnUpdateSpectator()
 		{
 			var delta = Time.time - _screenInitialTime;
 			if(delta > CameraIntervalSec)
@@ -105,17 +154,28 @@ namespace BH.Components
 		{
 			"press: 'Ready'".Log();
 
-			// shared by discovery
-			ref var model = ref Singleton<ServiceUI>.I.ModelsUser.Get(Singleton<ServiceNetwork>.I.IdCurrentUser, out var contains);
+			var idUser = Singleton<ServiceNetwork>.I.IdCurrentUser;
+			ref var model = ref Singleton<ServiceUI>.I.ModelsUser.Get(idUser, out var contains);
 			if(!contains)
 			{
 				throw new Exception("not contains");
 			}
 
-			model.IsReady = !model.IsReady;
-			_textButtonReady.text = model.IsReady
-				? CONTENT_USER_STATE_READY_S
-				: CONTENT_USER_STATE_NOT_READY_S;
+			var desc = new ResponseUser
+			{
+				IdUser = model.IdUser,
+				IdFeature = model.IdFeature,
+				IsReady = !model.IsReady,
+			};
+
+			if(ExtensionsView.TryUpdateUser(ref desc, out idUser))
+			{
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserUpdate
+					{
+						IdModel = idUser
+					});
+			}
 		}
 
 		private void OnButtonOwn()
@@ -124,7 +184,6 @@ namespace BH.Components
 
 			if(Singleton<ServiceNetwork>.I.NetworkModeShared is NetworkModeLobbyClient)
 			{
-				_textButtonOwn.text = CONTENT_MODE_SERVER_S;
 				Singleton<ServiceNetwork>.I.Events.Enqueue(
 					new CmdNetworkModeChange
 					{
@@ -134,7 +193,6 @@ namespace BH.Components
 
 			if(Singleton<ServiceNetwork>.I.NetworkModeShared is NetworkModeLobbyServer)
 			{
-				_textButtonOwn.text = CONTENT_MODE_CLIENT_S;
 				Singleton<ServiceNetwork>.I.Events.Enqueue(
 					new CmdNetworkModeChange
 					{

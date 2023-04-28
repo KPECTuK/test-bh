@@ -8,7 +8,7 @@ using UnityEngine;
 namespace BH.Components
 {
 	[RequireComponent(typeof(RectTransform))]
-	public class CompScreenLobbyCtrlBar : MonoBehaviour
+	public class CompScreenLobbyCtrlBar : MonoBehaviour, IWidgetController
 	{
 		//? bar is focused on users (? observer switchable)
 		// TODO: TL; TI; use view modes to display server modes, so can get rid of commands from ServiceNetwork
@@ -23,12 +23,11 @@ namespace BH.Components
 
 		private IScheduler _scheduler;
 
-		public IScheduler Scheduler => _scheduler ?? new SchedulerTaskDefault();
+		public void OnWidgetEnable() { }
 
-		private void Awake()
-		{
-			_transform = GetComponent<RectTransform>();
-		}
+		public void OnWidgetDisable() { }
+
+		public IScheduler Scheduler => _scheduler ?? new SchedulerTaskDefault();
 
 		public void SetScheduler<T>() where T : IScheduler, new()
 		{
@@ -75,33 +74,7 @@ namespace BH.Components
 			_buttons.Add(component);
 		}
 
-		private void BarWidgetScroll()
-		{
-			var stop = GetPointLocalOnAnimLine(1f);
-			var start = GetPointLocalOnAnimLine(0f);
-
-			var current = stop;
-			var stepNormalized = (start - stop).normalized;
-			var length = (start - stop).magnitude;
-			for(var index = 0; index < _buttons.Count; index++)
-			{
-				var transformWidget = _buttons[index].GroupMove;
-
-				_buttons[index].PositionLocalTarget = current;
-				current += stepNormalized * _buttons[index].SizeLocalInitial.x;
-
-				var position = transformWidget.localPosition;
-				var step = -stepNormalized * (length / ButtonSpeedSlideSec * Time.deltaTime);
-				var next = position + step;
-				var isStop = Vector3.Dot((_buttons[index].PositionLocalTarget - next).normalized, stepNormalized) >= 0f;
-
-				transformWidget.localPosition = isStop
-					? _buttons[index].PositionLocalTarget
-					: next;
-			}
-		}
-
-		public IEnumerator TaskAppendButtonServerAnim(CxId idModel)
+		public IEnumerator TaskAppendButtonServer(CxId idModel)
 		{
 			var load = Singleton<ServiceResources>.I.LoadAssetAsLibrary<CompScreenLobbyBtnServer>(
 				ServiceResources.ID_RESOURCE_UI_LOBBY_ITEM_SERVER_S,
@@ -115,7 +88,7 @@ namespace BH.Components
 			yield break;
 		}
 
-		public IEnumerator TaskAppendButtonUserAnim(CxId idModel)
+		public IEnumerator TaskAppendButtonUser(CxId idModel)
 		{
 			var load = Singleton<ServiceResources>.I.LoadAssetAsLibrary<CompScreenLobbyBtnUser>(
 				ServiceResources.ID_RESOURCE_UI_LOBBY_ITEM_USER_S,
@@ -129,7 +102,7 @@ namespace BH.Components
 			yield break;
 		}
 
-		public IEnumerator TaskUpdateButtonAnim(CxId idModel)
+		public IEnumerator TaskUpdateButton(CxId idModel)
 		{
 			var button = _buttons.Find(_ => _.IdModel == idModel);
 			if(button != null)
@@ -140,7 +113,7 @@ namespace BH.Components
 			yield break;
 		}
 
-		public IEnumerator TaskRemoveButtonAnim(CxId idModel)
+		public IEnumerator TaskRemoveButton(CxId idModel)
 		{
 			var button = _buttons.Find(_ => _.IdModel == idModel);
 			if(button != null)
@@ -180,40 +153,25 @@ namespace BH.Components
 			yield break;
 		}
 
-		private void Update()
-		{
-			for(int index = 0,
-				size = _tasks.Count; index < size; index++)
-			{
-				var task = _tasks.Dequeue();
-				if(task.MoveNext())
-				{
-					_tasks.Enqueue(task);
-				}
-			}
-
-			BarWidgetScroll();
-
-			#if UNITY_EDITOR
-			DrawGizmo();
-			#endif
-		}
-
 		private void OnButtonItem(ModelViewServer model)
 		{
 			"press: 'Server'".Log();
 
-			// TODO: remove routine to VM
-
-			ref var modelUser = ref Singleton<ServiceUI>.I.ModelsUser.Get(Singleton<ServiceNetwork>.I.IdCurrentUser, out var contains);
+			var idUser = Singleton<ServiceNetwork>.I.IdCurrentUser;
+			ref var modelUser = ref Singleton<ServiceUI>.I.ModelsUser.Get(idUser, out var contains);
 			if(!contains)
 			{
 				throw new Exception($"not contains: {model}");
 			}
 
-			modelUser.IdHostAt = model.IdHost;
+			if(modelUser.IdHostAt == model.IdHost)
+			{
+				return;
+			}
 
-			_tasks.Enqueue(TaskUpdateFocus());
+			//TODO: the only place where user desc data is not sufficient: remove direct assignment using command
+			modelUser.IdHostAt = model.IdHost;
+			Scheduler.Schedule(TaskUpdateFocus);
 
 			Singleton<ServicePawns>.I.Events.Enqueue(
 				new CmdPawnLobbySetChangeTo
@@ -232,6 +190,48 @@ namespace BH.Components
 		public IEnumerable<CxId> GetButtons()
 		{
 			return _buttons.Select(_ => _.IdModel);
+		}
+
+		private void Awake()
+		{
+			_transform = GetComponent<RectTransform>();
+		}
+
+		private void Update()
+		{
+			_tasks.ExecuteTasksSimultaneously();
+
+			BarWidgetScroll();
+
+			#if UNITY_EDITOR
+			DrawGizmo();
+			#endif
+		}
+
+		private void BarWidgetScroll()
+		{
+			var stop = GetPointLocalOnAnimLine(1f);
+			var start = GetPointLocalOnAnimLine(0f);
+
+			var current = stop;
+			var stepNormalized = (start - stop).normalized;
+			var length = (start - stop).magnitude;
+			for(var index = 0; index < _buttons.Count; index++)
+			{
+				var transformWidget = _buttons[index].GroupMove;
+
+				_buttons[index].PositionLocalTarget = current;
+				current += stepNormalized * _buttons[index].SizeLocalInitial.x;
+
+				var position = transformWidget.localPosition;
+				var step = -stepNormalized * (length / ButtonSpeedSlideSec * Time.deltaTime);
+				var next = position + step;
+				var isStop = Vector3.Dot((_buttons[index].PositionLocalTarget - next).normalized, stepNormalized) >= 0f;
+
+				transformWidget.localPosition = isStop
+					? _buttons[index].PositionLocalTarget
+					: next;
+			}
 		}
 
 		#if UNITY_EDITOR
@@ -260,90 +260,5 @@ namespace BH.Components
 			}
 		}
 		#endif
-	}
-
-	/// <summary>
-	/// it might be solved by the commands, but it aligned to view, and, more over,
-	/// it could serve as any type of filter\provider, not the type only
-	/// </summary>
-	public interface IScheduler
-	{
-		IScheduler PassThrough { get; }
-
-		void Schedule(CxId idOver, Func<CxId, IEnumerator> taskFactory);
-	}
-
-	public abstract class SchedulerTaskBase
-	{
-		public Queue<IEnumerator> QueueTasks;
-	}
-
-	public sealed class SchedulerTaskModelUser : SchedulerTaskBase, IScheduler
-	{
-		public IScheduler PassThrough => new SchedulerTaskAll { QueueTasks = QueueTasks };
-
-		public void Schedule(CxId idOver, Func<CxId, IEnumerator> taskFactory)
-		{
-			Singleton<ServiceUI>.I.ModelsUser.Get(idOver, out var contains);
-			if(contains)
-			{
-				var name = taskFactory.Method.Name;
-				$"run task '{name}' by scheduler '{GetType().NameNice()}' for {idOver}".Log();
-
-				QueueTasks.Enqueue(taskFactory.Invoke(idOver));
-			}
-			else
-			{
-				var name = taskFactory.Method.Name;
-				$"pass task '{name}' by scheduler '{GetType().NameNice()}' for {idOver}".Log();
-			}
-		}
-	}
-
-	public sealed class SchedulerTaskModelServer : SchedulerTaskBase, IScheduler
-	{
-		public IScheduler PassThrough => new SchedulerTaskAll { QueueTasks = QueueTasks };
-
-		public void Schedule(CxId idOver, Func<CxId, IEnumerator> taskFactory)
-		{
-			Singleton<ServiceUI>.I.ModelsServer.Get(idOver, out var contains);
-			if(contains)
-			{
-				var name = taskFactory.Method.Name;
-				$"run task '{name}' by scheduler '{GetType().NameNice()}' for {idOver}".Log();
-
-				QueueTasks.Enqueue(taskFactory.Invoke(idOver));
-			}
-			else
-			{
-				var name = taskFactory?.Method.Name;
-				$"pass task '{name}' by scheduler '{GetType().NameNice()}' for {idOver}".Log();
-			}
-		}
-	}
-
-	public sealed class SchedulerTaskAll : SchedulerTaskBase, IScheduler
-	{
-		//! avoid loops
-		public IScheduler PassThrough => this;
-
-		public void Schedule(CxId idOver, Func<CxId, IEnumerator> taskFactory)
-		{
-			var name = taskFactory.Method.Name;
-			$"run task '{name}' by scheduler '{GetType().NameNice()}' for {idOver}".Log();
-
-			QueueTasks.Enqueue(taskFactory.Invoke(idOver));
-		}
-	}
-
-	public sealed class SchedulerTaskDefault : IScheduler
-	{
-		public IScheduler PassThrough => throw new NotSupportedException();
-
-		public void Schedule(CxId idOver, Func<CxId, IEnumerator> taskFactory)
-		{
-			var name = taskFactory?.Method.Name;
-			$"pass task '{name}' by default scheduler for {idOver}".Log();
-		}
 	}
 }

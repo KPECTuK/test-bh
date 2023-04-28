@@ -9,64 +9,62 @@ namespace BH.Components
 {
 	[RequireComponent(typeof(Canvas))]
 	[RequireComponent(typeof(CanvasScaler))]
-	public class CompScreens : MonoBehaviour
+	public class CompScreens : MonoBehaviour, IWidgetController
 	{
-		// alternative to IsBusy request: both are rough implementation
-		public class Signal
-		{
-			public bool Is { get; set; }
-		}
-
-		private readonly List<CompScreen> _screens = new();
 		private readonly Queue<IEnumerator> _tasks = new();
+		private readonly List<CompScreen> _screens = new();
 
-		private Coroutine _current;
+		private IScheduler _scheduler;
 
-		private void Update()
+		public IScheduler Scheduler => _scheduler ?? new SchedulerTaskDefault();
+
+		public void SetScheduler<T>() where T : IScheduler, new()
 		{
-			// this is busy
-			if(_current == null)
-			{
-				if(_tasks.TryDequeue(out var iterator))
-				{
-					_current = StartCoroutine(iterator);
-				}
-				else
-				{
-					while(Singleton<ServiceUI>.I.Events.TryPeek(out var @event))
-					{
-						// stop queue to wait screen transition (batching for particular screen)
-						if(@event is CmdViewScreenChange)
-						{
-							var active = GetActiveScreen();
-							if(active == null || !active.IsBusy)
-							{
-								TryRunCommand(@event);
-							}
-
-							break;
-						}
-
-						TryRunCommand(@event);
-					}
-				}
-			}
+			_scheduler = _tasks.BuildScheduler<T>();
 		}
 
-		private void TryRunCommand(ICommand<CompScreens> @event)
+		public void OnWidgetEnable()
 		{
-			if(@event.Assert(this))
-			{
-				$"running view command: {@event.GetType().NameNice()}".Log();
+			// no top controller
+		}
 
-				@event.Execute(this);
+		public void OnWidgetDisable()
+		{
+			// no top controller
+		}
+
+		public void RegisterScreen(CompScreen screen)
+		{
+			if(screen != null)
+			{
+				_screens.Add(screen);
+
+				screen.SetScheduler<SchedulerTaskAll>();
+
+				var canvasGroup = screen.GetComponent<CanvasGroup>();
+				canvasGroup.alpha = 0f;
+				canvasGroup.interactable = false;
+				canvasGroup.blocksRaycasts = false;
+
+				screen.OnWidgetEnable();
 			}
 			else
 			{
-				$"skip view command due conditions: {@event.GetType().NameNice()}".LogWarning();
+				throw new Exception("trying to register screen as NULL");
 			}
+		}
 
-			Singleton<ServiceUI>.I.Events.Dequeue();
+		public void UnregisterScreen(CompScreen screen)
+		{
+			if(screen != null)
+			{
+				screen.OnWidgetDisable();
+				_screens.Remove(screen);
+			}
+			else
+			{
+				throw new Exception("trying to unregister screen as NULL");
+			}
 		}
 
 		public CompScreen GetActiveScreen()
@@ -82,39 +80,32 @@ namespace BH.Components
 			return null;
 		}
 
-		public void RegisterScreen(CompScreen screen)
+		private void Awake()
 		{
-			if(_screens.Contains(screen))
+			SetScheduler<SchedulerTaskAll>();
+		}
+
+		private void Update()
+		{
+			if(!_tasks.ExecuteTasksSequentially())
 			{
-				throw new Exception("registered already");
+				Singleton<ServiceUI>.I.Events.TryExecuteCommandQueue(this);
 			}
-
-			screen.Init();
-			_screens.Add(screen);
-		}
-
-		public void UnregisterScreen(CompScreen screen)
-		{
-			_screens.Remove(screen);
-		}
-
-		public void Schedule(IEnumerator task)
-		{
-			_tasks.Enqueue(task);
 		}
 
 		public IEnumerator TaskScreenChange(string nameScreenTarget)
 		{
-			var screenTarget = _screens
-				.Find(_ => _
-					.name
-					.Contains(
-						nameScreenTarget,
-						StringComparison.InvariantCultureIgnoreCase));
+			// ReSharper disable once InconsistentNaming
+			static bool isName(string compName, string comparand)
+			{
+				return compName.Contains(comparand, StringComparison.InvariantCultureIgnoreCase);
+			}
+
+			var screenTarget = _screens.Find(_ => isName(_.name, nameScreenTarget));
 
 			if(screenTarget == null)
 			{
-				Debug.LogError($"unregistered screen: {nameScreenTarget}");
+				$"unregistered screen: {nameScreenTarget}".LogWarning();
 			}
 			else
 			{
@@ -124,26 +115,17 @@ namespace BH.Components
 				}
 
 				var screenSource = _screens.Find(_ => _.IsActiveScreen);
-
 				if(screenSource != null)
 				{
-					var signalFade = new Signal();
-					screenSource.GoFade(signalFade);
-					while(!signalFade.Is)
-					{
-						yield return null;
-					}
+					screenSource.Scheduler.Schedule(screenSource.TaskScreenFadeOut);
+					yield return screenSource.Scheduler.Wait();
+					screenSource.OnWidgetDisable();
 				}
 
-				var signalRaise = new Signal();
-				screenTarget.GoRaise(signalRaise);
-				while(!signalRaise.Is)
-				{
-					yield return null;
-				}
+				screenTarget.OnWidgetEnable();
+				screenTarget.Scheduler.Schedule(screenTarget.TaskScreenFadeIn);
+				yield return screenTarget.Scheduler.Wait();
 			}
-
-			_current = null;
 		}
 	}
 }

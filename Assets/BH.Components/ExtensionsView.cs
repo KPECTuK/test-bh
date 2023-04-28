@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Net;
 using BH.Model;
@@ -99,8 +100,8 @@ namespace BH.Components
 		}
 
 		public static CmdViewLobbyClear BuildForAllExceptSelf(
-			this CmdViewLobbyClear target, 
-			ListRef<ModelViewServer> modelsServer, 
+			this CmdViewLobbyClear target,
+			ListRef<ModelViewServer> modelsServer,
 			ListRef<ModelViewUser> modelsUser)
 		{
 			var sizeServers = modelsServer.Count;
@@ -129,8 +130,8 @@ namespace BH.Components
 		}
 
 		public static CmdViewLobbyClear BuildForAll(
-			this CmdViewLobbyClear target, 
-			ListRef<ModelViewServer> modelsServer, 
+			this CmdViewLobbyClear target,
+			ListRef<ModelViewServer> modelsServer,
 			ListRef<ModelViewUser> modelsUser)
 		{
 			var sizeServers = modelsServer.Count;
@@ -303,7 +304,7 @@ namespace BH.Components
 		public static bool TryUpdateUser(ref ResponseUser response, out CxId idUser)
 		{
 			idUser = CxId.Empty;
-			
+
 			if(response.IdUser.IsEmpty)
 			{
 				return false;
@@ -325,6 +326,102 @@ namespace BH.Components
 			}
 
 			return true;
+		}
+
+		//
+
+		public static bool TryExecuteCommandQueue<T>(this Queue<ICommand<T>> source, T context)
+		{
+			var notionContext = context?.GetType().NameNice() ?? "undefined";
+
+			while(source.TryPeek(out var @event))
+			{
+				try
+				{
+					var notionEvent = @event?.GetType().NameNice() ?? "undefined";
+
+					if(@event == null)
+					{
+						"skip command due conditions: command is NULL".LogError();
+					}
+					else
+					{
+						if(@event.Assert(context))
+						{
+							$"run command <color=white>{notionEvent}</color> in context <color=white>{notionContext}</color>".Log();
+
+							@event.Execute(context);
+						}
+						else
+						{
+							$"skip command due conditions <color=white>{notionEvent}</color> in context <color=white>{notionContext}</color>".LogWarning();
+						}
+					}
+				}
+				catch(Exception exception)
+				{
+					exception.ToText().Log();
+				}
+
+				source.Dequeue();
+
+				// stop queue to wait screen transition for example (batching for particular screen)
+				if(@event is ICommandBreak<CompScreens>)
+				{
+					$"stop command queue in context: <color=white>{notionContext}</color>".Log();
+
+					break;
+				}
+			}
+
+			return source.Count > 0;
+		}
+
+		//
+
+		public static IScheduler BuildScheduler<T>(this Queue<IEnumerator> tasks) where T : IScheduler, new()
+		{
+			var result = new T();
+			if(result is SchedulerTaskBase cast)
+			{
+				cast.QueueTasks = tasks;
+			}
+
+			return result;
+		}
+
+		/// <summary>
+		/// enumerator like behaviour
+		/// </summary>
+		public static bool ExecuteTasksSimultaneously(this Queue<IEnumerator> tasks)
+		{
+			var size = tasks.Count;
+			for(var index = 0; index < size; index++)
+			{
+				var task = tasks.Dequeue();
+				if(task.MoveNext())
+				{
+					tasks.Enqueue(task);
+				}
+			}
+
+			return tasks.Count != 0;
+		}
+
+		public static bool ExecuteTasksSequentially(this Queue<IEnumerator> tasks)
+		{
+			var size = tasks.Count;
+			for(var index = 0; index < size; index++)
+			{
+				var task = tasks.Dequeue();
+				if(task.MoveNext())
+				{
+					tasks.Enqueue(task);
+					break;
+				}
+			}
+
+			return tasks.Count != 0;
 		}
 	}
 }

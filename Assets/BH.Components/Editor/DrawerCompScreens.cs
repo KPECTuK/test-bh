@@ -155,7 +155,8 @@ namespace BH.Components.Editor
 						if(GUILayout.Button(_names[index]))
 						{
 							var nameScreen = _names[index];
-							ActionDeco(() => cast.Schedule(cast.TaskScreenChange(nameScreen)));
+							//! ActionDeco this is the scheduler
+							ActionDeco(() => cast.Scheduler.Schedule(nameScreen, cast.TaskScreenChange));
 						}
 					}
 				}

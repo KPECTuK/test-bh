@@ -57,26 +57,7 @@ namespace BH.Components
 				#endif
 			}
 
-			while(Singleton<ServiceNetwork>.I.Events.TryPeek(out var @event))
-			{
-				TryRunCommand(@event);
-			}
-		}
-
-		private void TryRunCommand(ICommand<CompApp> @event)
-		{
-			if(@event.Assert(this))
-			{
-				$"running network command: {@event.GetType().NameNice()}".Log();
-
-				@event.Execute(this);
-			}
-			else
-			{
-				$"skip network command due conditions: {@event.GetType().NameNice()}".LogWarning();
-			}
-
-			Singleton<ServiceNetwork>.I.Events.Dequeue();
+			Singleton<ServiceNetwork>.I.Events.TryExecuteCommandQueue(this);
 		}
 	}
 }
