@@ -15,7 +15,7 @@ namespace BH.Components
 			model.IdCamera = result.Camera.GetComponent<ISceneCamera>().Id;
 			result.CameraAnchor = result.Camera.transform.localPosition;
 			result.Builder = this;
-			result.IdModel = model.IdUser;
+			result.IdUser = model.IdUser;
 			result.InputReceiver = new InputPawnLocal(result);
 			result.InputReceiver.Enable();
 			result.Set(new DriverPawnLocal(result));

@@ -8,43 +8,12 @@ namespace BH.Components
 {
 	public static class ExtensionsView
 	{
-		public static T FindAs<T>(this Queue<T> source, Predicate<T> predicate)
-		{
-			var size = source.Count;
-			for(var index = 0; index < size; index++)
-			{
-				var item = source.Dequeue();
-				source.Enqueue(item);
+		// TODO: synchronize GetRecentForHost()
 
-				// see: ModelViewServer.IEquatable<> also
-				if(predicate(item))
-				{
-					return item;
-				}
-			}
-
-			return default;
-		}
-
-		public static T RemoveItemBy<T>(this Queue<T> source, Predicate<T> predicate)
-		{
-			var size = source.Count;
-			for(var index = 0; index < size; index++)
-			{
-				var item = source.Dequeue();
-
-				if(predicate(item))
-				{
-					return item;
-				}
-
-				source.Enqueue(item);
-			}
-
-			return default;
-		}
-
-		public static int GetRecentForHost(this ListRef<ModelViewUser> source, CxId[] into, CxId idHost)
+		public static int GetRecentForHost(
+			this ListRef<ModelViewUser> source,
+			CxId[] into,
+			CxId idHost)
 		{
 			var models = new ModelViewUser[into.Length];
 			var size = source.Count;
@@ -65,7 +34,7 @@ namespace BH.Components
 						break;
 					}
 
-					if(models[indexResult].FirstUpdated > modelCurrent.FirstUpdated)
+					if(models[indexResult].TimestampDiscovery > modelCurrent.TimestampDiscovery)
 					{
 						var indexInsert = models.Length - 1;
 						while(indexInsert > indexResult)
@@ -97,6 +66,26 @@ namespace BH.Components
 			}
 
 			return count;
+		}
+
+		public static unsafe int GetRecentForHost(
+			this ListRef<ModelViewUser> source,
+			CxId* intoPtr,
+			int numElementsInto,
+			CxId idHost)
+		{
+			// TODO: remove 
+			var buffer = new CxId[numElementsInto];
+			var numIds = source.GetRecentForHost(buffer, idHost);
+			fixed(CxId* bufferPtr = buffer)
+			{
+				Buffer.MemoryCopy(
+					bufferPtr,
+					intoPtr,
+					numElementsInto * CxId.SIZE_I,
+					numIds * CxId.SIZE_I);
+			}
+			return numIds;
 		}
 
 		public static CmdViewLobbyClear BuildForAllExceptSelf(
@@ -154,7 +143,7 @@ namespace BH.Components
 		/// <summary>
 		/// returns operation result, id is returning always
 		/// </summary>
-		public static bool TryAppendServer(ref ResponseServer desc, IPEndPoint epResponseFrom, Uri uriFrom, out CxId idServer)
+		public static bool TryAppendServer(ref Response desc, out CxId idServer)
 		{
 			if(desc.IdHost.IsEmpty)
 			{
@@ -171,15 +160,7 @@ namespace BH.Components
 				return false;
 			}
 
-			var modelServer = new ModelViewServer
-			{
-				IdHost = desc.IdHost,
-				ServerUsersTotal = desc.ServerUsersTotal,
-				IdOwner = desc.Owner.IdUser,
-				LastUpdated = DateTime.UtcNow,
-				HostIp = epResponseFrom,
-				HostUri = uriFrom,
-			};
+			var modelServer = ModelViewServer.Create(desc);
 
 			Singleton<ServiceUI>.I.ModelsServer.Add(modelServer);
 			Singleton<ServiceUI>.I.ModelsServer.ToText($"append <b><color=white>(server)</color></b>: {modelServer}").Log();
@@ -191,38 +172,37 @@ namespace BH.Components
 		/// <summary>
 		/// returns operation result, id is returning always
 		/// </summary>
-		public static bool TryAppendUser(ref ResponseUser response, ref CxId idHostAt, out CxId idUser)
+		public static bool TryAppendUser(ref DataUser data, CxId idHostInitiator, out CxId idUser)
 		{
-			if(response.IdUser.IsEmpty)
+			//! for client cant be empty or current machine id
+			//! idHostInitiator is to update idFeature from server, bound by model (selected one)
+
+			// updates are valid from self or server which is user bound to only
+			// initiator will always be a local host id on server
+			// initiator will always be a remote host which response had been received on clients every call
+			// this is the problem to solve actually - grouping (by server)
+
+			if(data.IdUser.IsEmpty)
 			{
 				idUser = CxId.Empty;
 				return false;
 			}
 
-			Singleton<ServiceUI>.I.ModelsUser.Get(response.IdUser, out var contains);
+			Singleton<ServiceUI>.I.ModelsUser.Get(data.IdUser, out var contains);
 			if(contains)
 			{
-				$"user data collision <b><color=white>(user)</color></b> {response.IdUser.ShortForm()} for operation APPEND".LogError();
+				$"user data collision <b><color=white>(user)</color></b> {data.IdUser.ShortForm()} for operation APPEND".LogError();
 
 				idUser = CxId.Empty;
 				return false;
 			}
 
-			var modelUser = new ModelViewUser
-			{
-				IdUser = response.IdUser,
-				IdFeature = response.IdFeature,
-				IsReady = response.IsReady,
-				IdCamera = CxId.Empty,
-				FirstUpdated = DateTime.UtcNow,
-				LastUpdated = DateTime.UtcNow,
-				IdHostAt = idHostAt,
-			};
+			var modelUser = ModelViewUser.Create(data);
 
 			Singleton<ServiceUI>.I.ModelsUser.Add(modelUser);
 			Singleton<ServiceUI>.I.ModelsUser.ToText($"append <b><color=white>(user)</color></b>: {modelUser}").Log();
 
-			idUser = response.IdUser;
+			idUser = data.IdUser;
 			return true;
 		}
 
@@ -269,10 +249,52 @@ namespace BH.Components
 			return contains;
 		}
 
+		public static void TryRemoveUsersByHost(CxId idServer, bool isRemoveSelf = false)
+		{
+			var idUserCurrent = Singleton<ServiceNetwork>.I.IdCurrentUser;
+			var set = Singleton<ServiceUI>.I.ModelsUser;
+			var setSize = set.Count;
+			for(var count = 0; count < setSize; count++)
+			{
+				var modelUser = set.Dequeue(out var contains);
+
+				if(modelUser.IdUser == idUserCurrent && !isRemoveSelf)
+				{
+					set.Enqueue(modelUser);
+
+					if(!modelUser.IdHostAt.IsEmpty)
+					{
+						//! TODO: to generalized routine
+						modelUser.IdHostAt = CxId.Empty;
+						Singleton<ServiceUI>.I.Events.Enqueue(new CmdViewLobbyUserUpdate { IdUser = modelUser.IdUser });
+						Singleton<ServiceUI>.I.ModelsUser.ToText($"update <b><color=white>(user)</color></b>: {modelUser})").Log();
+					}
+
+					continue;
+				}
+
+				if(modelUser.IdHostAt != idServer)
+				{
+					set.Enqueue(modelUser);
+
+					continue;
+				}
+
+				Singleton<ServiceUI>.I.Events.Enqueue(new CmdViewLobbyUserRemove { IdUser = modelUser.IdUser });
+				Singleton<ServiceUI>.I.ModelsUser.ToText($"remove batch <b><color=white>(user)</color></b>: {modelUser}").Log();
+				Singleton<ServicePawns>.I.ReleaseFeature(modelUser.IdUser);
+			}
+
+			if(setSize > 0)
+			{
+				Singleton<ServiceUI>.I.ModelsUser.DeFragment();
+			}
+		}
+
 		/// <summary>
 		/// returns operation result, id is not a default if data has changed
 		/// </summary>
-		public static bool TryUpdateServer(ref ResponseServer desc, out CxId idServer)
+		public static bool TryUpdateServer(ref Response desc, out CxId idServer)
 		{
 			idServer = CxId.Empty;
 			if(desc.IdHost.IsEmpty)
@@ -301,25 +323,34 @@ namespace BH.Components
 		/// <summary>
 		/// returns operation result, id is not a default if data has changed
 		/// </summary>
-		public static bool TryUpdateUser(ref ResponseUser response, out CxId idUser)
+		public static bool TryUpdateUser(ref DataUser data, CxId idHostInitiator, out CxId idUser)
 		{
+			//! for client cant be empty or current machine id
+			//! idHostInitiator is to update idFeature from server, bound by model (selected one)
+
+			// updates are valid from self or server which is user bound to only
+			// initiator will always be a local host id on server
+			// initiator will always be a remote host which response had been received on clients every call
+			// this is the problem to solve actually - grouping (by server)
+
 			idUser = CxId.Empty;
 
-			if(response.IdUser.IsEmpty)
+			if(data.IdUser.IsEmpty)
 			{
 				return false;
 			}
 
-			ref var modelUser = ref Singleton<ServiceUI>.I.ModelsUser.Get(response.IdUser, out var contains);
+			ref var modelUser = ref Singleton<ServiceUI>.I.ModelsUser.Get(data.IdUser, out var contains);
 
 			if(!contains)
 			{
-				$"not found <b><color=white>(user)</color></b> {response.IdUser.ShortForm()} for operation UPDATE".LogError();
+				// warning is ok because append goes after update
+				$"not found <b><color=white>(user)</color></b> {data.IdUser.ShortForm()} for operation UPDATE".LogWarning();
 
 				return false;
 			}
 
-			if(modelUser.UpdateFrom(ref response))
+			if(modelUser.UpdateFrom(ref data))
 			{
 				Singleton<ServiceUI>.I.ModelsUser.ToText($"update <b><color=white>(user)</color></b>: {modelUser})").Log();
 				idUser = modelUser.IdUser;

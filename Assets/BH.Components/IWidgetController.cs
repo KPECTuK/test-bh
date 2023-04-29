@@ -15,6 +15,8 @@ namespace BH.Components
 		void SetScheduler<T>() where T : IScheduler, new();
 	}
 
+	// TODO: extend task name with source class
+
 	/// <summary>
 	/// it might be solved by the commands, but it aligned to view, and, more over,
 	/// it could serve as any type of filter\provider, not the type only
@@ -27,9 +29,7 @@ namespace BH.Components
 
 		void Schedule(Func<IEnumerator> taskFactory);
 		
-		/// <remarks>
-		/// NOTE: first arg is a task context
-		/// </remarks>
+		/// <remarks> NOTE: first arg is a task context </remarks>
 		void Schedule<T>(T idOver, Func<T, IEnumerator> taskFactory);
 
 		IEnumerator Wait();
@@ -44,6 +44,8 @@ namespace BH.Components
 	{
 		public Queue<IEnumerator> QueueTasks;
 
+		protected IScheduler Fallback;
+
 		//? not all of them can be canceled
 		public bool IsCanceled;
 
@@ -52,6 +54,12 @@ namespace BH.Components
 		public void Clear()
 		{
 			QueueTasks?.Clear();
+		}
+
+		public IScheduler SetFallBack<T>() where T : IScheduler, new()
+		{
+			Fallback = QueueTasks.BuildScheduler<T>();
+			return Fallback;
 		}
 
 		public IEnumerator Wait()
@@ -87,18 +95,25 @@ namespace BH.Components
 
 		private void Schedule(CxId idOver, Func<CxId, IEnumerator> taskFactory)
 		{
-			Singleton<ServiceUI>.I.ModelsUser.Get(idOver, out var contains);
-			if(contains)
+			var modelUser = Singleton<ServiceUI>.I.ModelsUser.Get(idOver, out var contains);
+			// call in server mode
+			var aligned = 
+				// local user picks any or no server
+				modelUser.IdUser == Singleton<ServiceNetwork>.I.IdCurrentUser ||
+				// remote users pick is a current server
+				modelUser.IdHostAt == Singleton<ServiceNetwork>.I.IdCurrentMachine;
+
+			if(contains && aligned)
 			{
 				var name = taskFactory.Method.Name;
-				$"run task '{name}' by scheduler '{GetType().NameNice()}' for '{idOver}'".Log();
+				$"run task '{name}' by scheduler '{GetType().NameNice()}' for '{idOver.ShortForm()}'".Log();
 
 				QueueTasks.Enqueue(taskFactory.Invoke(idOver));
 			}
 			else
 			{
 				var name = taskFactory.Method.Name;
-				$"pass task '{name}' by scheduler '{GetType().NameNice()}' for '{idOver}': conditions are not met (user id)".Log();
+				$"pass task '{name}' by scheduler '{GetType().NameNice()}' for '{idOver.ShortForm()}': conditions are not met (user id)".Log();
 			}
 		}
 	}
@@ -134,14 +149,14 @@ namespace BH.Components
 			if(contains)
 			{
 				var name = taskFactory.Method.Name;
-				$"run task '{name}' by scheduler '{GetType().NameNice()}' for '{idOver}'".Log();
+				$"run task '{name}' by scheduler '{GetType().NameNice()}' for '{idOver.ShortForm()}'".Log();
 
 				QueueTasks.Enqueue(taskFactory.Invoke(idOver));
 			}
 			else
 			{
 				var name = taskFactory?.Method.Name;
-				$"pass task '{name}' by scheduler '{GetType().NameNice()}' for '{idOver}': conditions are not met (serer id)".Log();
+				$"pass task '{name}' by scheduler '{GetType().NameNice()}' for '{idOver.ShortForm()}': conditions are not met (serer id)".Log();
 			}
 		}
 	}

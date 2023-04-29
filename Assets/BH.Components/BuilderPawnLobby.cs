@@ -12,8 +12,9 @@ namespace BH.Components
 				parent,
 				origin);
 
+			result.name = $"{result.name.CleanUpName()}_{model.IdUser.ShortForm()}";
 			result.Builder = this;
-			result.IdModel = model.IdUser;
+			result.IdUser = model.IdUser;
 			result.InputReceiver = null;
 			result.Set(new DriverPawnLobby());
 			result.SetFeatures(model.IdFeature);
@@ -22,6 +23,9 @@ namespace BH.Components
 			return result;
 		}
 
-		public void Destroy(CompPawn instance) { }
+		public void Destroy(CompPawn instance)
+		{
+			Object.Destroy(instance.gameObject);
+		}
 	}
 }

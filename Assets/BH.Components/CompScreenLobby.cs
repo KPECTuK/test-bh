@@ -12,11 +12,11 @@ namespace BH.Components
 	[RequireComponent(typeof(CompScreen))]
 	public class CompScreenLobby : MonoBehaviour, IWidgetController
 	{
-		private const string CONTENT_MODE_SERVER_S = "IN SERVER MODE";
-		private const string CONTENT_MODE_CLIENT_S = "IN CLIENT MODE";
+		private const string CONTENT_MODE_SERVER_S = "TO CLIENT MODE";
+		private const string CONTENT_MODE_CLIENT_S = "TO SERVER MODE";
 
-		private const string CONTENT_USER_STATE_READY_S = "GO TO BUSY";
-		private const string CONTENT_USER_STATE_NOT_READY_S = "GO TO READY";
+		private const string CONTENT_USER_STATE_READY_S = "TO BUSY STATE";
+		private const string CONTENT_USER_STATE_NOT_READY_S = "TO READY STATE";
 
 		public float CameraIntervalSec = 10f;
 
@@ -92,7 +92,7 @@ namespace BH.Components
 
 			_tasks.ExecuteTasksSimultaneously();
 
-			OnUpdateSpectator();
+			UpdateSpectator();
 
 			var idUser = Singleton<ServiceNetwork>.I.IdCurrentUser;
 			var idServerLocal = Singleton<ServiceNetwork>.I.IdCurrentMachine;
@@ -137,10 +137,8 @@ namespace BH.Components
 			yield break;
 		}
 
-		/// <summary>
-		/// might be a task also
-		/// </summary>
-		private void OnUpdateSpectator()
+		//? might be a task also
+		private void UpdateSpectator()
 		{
 			var delta = Time.time - _screenInitialTime;
 			if(delta > CameraIntervalSec)
@@ -161,19 +159,15 @@ namespace BH.Components
 				throw new Exception("not contains");
 			}
 
-			var desc = new ResponseUser
-			{
-				IdUser = model.IdUser,
-				IdFeature = model.IdFeature,
-				IsReady = !model.IsReady,
-			};
+			var desc = model.Data;
+			desc.IsReady = !desc.IsReady;
 
-			if(ExtensionsView.TryUpdateUser(ref desc, out idUser))
+			if(ExtensionsView.TryUpdateUser(ref desc, Singleton<ServiceNetwork>.I.IdCurrentMachine, out idUser))
 			{
 				Singleton<ServiceUI>.I.Events.Enqueue(
 					new CmdViewLobbyUserUpdate
 					{
-						IdModel = idUser
+						IdUser = idUser
 					});
 			}
 		}

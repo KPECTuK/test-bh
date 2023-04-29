@@ -11,16 +11,21 @@ namespace BH.Components
 		public CxId IdOwner;
 		public int ServerUsersTotal;
 
-		public IPEndPoint HostIp;
-		public Uri HostUri;
-
-		public DateTime LastUpdated;
-
 		public string RenderServer => IdHost.ShortForm(false);
 		public string RenderOwner => IdOwner.ShortForm(false);
 		public string RenderPlayers => $"{ServerUsersTotal}";
 
 		public bool IsEmpty => IdHost.IsEmpty;
+
+		public static ModelViewServer Create(Response data)
+		{
+			return new()
+			{
+				IdHost = data.IdHost,
+				ServerUsersTotal = data.ServerUsersTotal,
+				IdOwner = data.Owner.IdUser,
+			};
+		}
 
 		public override string ToString()
 		{
@@ -42,7 +47,7 @@ namespace BH.Components
 			return IdHost.GetHashCode();
 		}
 
-		public bool UpdateFrom(ref ResponseServer response)
+		public bool UpdateFrom(ref Response response)
 		{
 			var result = false;
 			if(IdHost != response.IdHost)
@@ -56,8 +61,6 @@ namespace BH.Components
 
 				ServerUsersTotal = response.ServerUsersTotal;
 			}
-
-			LastUpdated = DateTime.UtcNow;
 
 			return result;
 		}

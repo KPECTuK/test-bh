@@ -32,6 +32,13 @@ namespace BH.Model
 		private MultiCatsLock _lock;
 		private Thread _thread;
 
+		private volatile bool _isEnabled;
+
+		/// <summary>
+		/// deprecated: TODO: remove.. to store that flag in component is actually the same 
+		/// </summary>
+		public bool IsEnabled => _isEnabled;
+
 		~ServiceDiscoveryServerSide()
 		{
 			Disposing();
@@ -122,6 +129,8 @@ namespace BH.Model
 				return false;
 			}
 
+			_isEnabled = true;
+
 			return true;
 		}
 
@@ -146,6 +155,7 @@ namespace BH.Model
 			_lock?.Dispose();
 			_lock = null;
 
+			_isEnabled = false;
 			_portServer = -1;
 
 			//! check

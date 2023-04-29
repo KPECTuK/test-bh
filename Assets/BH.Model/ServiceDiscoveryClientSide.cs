@@ -39,6 +39,13 @@ namespace BH.Model
 		private UdpClient _udpBroadcast;
 		private Thread _threadBroadcast;
 
+		private volatile bool _isEnabled;
+
+		/// <summary>
+		/// deprecated: TODO: remove.. to store that flag in component is actually the same 
+		/// </summary>
+		public bool IsEnabled => _isEnabled;
+
 		~ServiceDiscoveryClientSide()
 		{
 			Disposing();
@@ -177,6 +184,8 @@ namespace BH.Model
 				return false;
 			}
 
+			_isEnabled = true;
+
 			return true;
 		}
 
@@ -212,6 +221,8 @@ namespace BH.Model
 			}
 
 			_udpListen = null;
+
+			_isEnabled = false;
 
 			//! check
 			if(!_threadBroadcast?.Join(_intervalJoin) ?? false)

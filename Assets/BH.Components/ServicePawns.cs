@@ -7,30 +7,86 @@ namespace BH.Components
 {
 	public class ServicePawns : IService
 	{
-		// TL; TI; not a good idea to store components in static
-		public readonly Queue<CompPawn> Instances = new();
+		// to link all the parts of code dependant
+		public const int MAX_NUMBER_OR_PLAYERS_I = 4;
+
 		public readonly Queue<ICommand<CompPawnSpawners>> Events = new();
 
+		// corresponds to feature id and spawned collections
+		private CxId[] _idsUsersMap;
 		private CxId[] _idsFeature;
-		private CxId[] _idsMap;
+		private bool[] _isSpawned;
+
+		//! variable number of users is not supported by discovery protocol
+
+		public int MaxPawnsSpawned => _idsUsersMap.Length;
+
+		public int NumPawnsSpawned
+		{
+			get
+			{
+				var count = 0;
+				for(var index = 0; index < _idsUsersMap.Length; index++)
+				{
+					count += _idsUsersMap[index].IsEmpty && _isSpawned[index] ? 1 : 0;
+				}
+
+				return count;
+			}
+		}
+
+		public bool IsSpawned(CxId idUser)
+		{
+			var index = Array.IndexOf(_idsUsersMap, idUser);
+			return index != -1 && _isSpawned[index];
+		}
+
+		public unsafe int GetIdsSpawned(CxId* setPtr, int sizeSet)
+		{
+			var indexSet = 0;
+			for(var indexMap = 0; indexMap < _idsUsersMap.Length; indexMap++)
+			{
+				if(_idsUsersMap[indexMap].IsEmpty)
+				{
+					continue;
+				}
+
+				if(!_isSpawned[indexMap])
+				{
+					continue;
+				}
+
+				if(indexSet == sizeSet)
+				{
+					throw new Exception("out of buffer");
+				}
+
+				setPtr[indexSet] = _idsUsersMap[indexMap];
+				indexSet++;
+			}
+
+			return indexSet;
+		}
 
 		public CxId GetNextFeatureAvailableTo(CxId idUser)
 		{
+			//? if in server mode: always use first slot for local user - not to use is a game feature
+
 			// if its occupied already
-			for(var index = 0; index < _idsMap.Length; index++)
+			for(var index = 0; index < _idsUsersMap.Length; index++)
 			{
-				if(_idsMap[index] == idUser)
+				if(_idsUsersMap[index] == idUser)
 				{
 					return _idsFeature[index];
 				}
 			}
 
 			// search for first free
-			for(var index = 0; index < _idsMap.Length; index++)
+			for(var index = 0; index < _idsUsersMap.Length; index++)
 			{
-				if(_idsMap[index].IsEmpty)
+				if(_idsUsersMap[index].IsEmpty)
 				{
-					_idsMap[index] = idUser;
+					_idsUsersMap[index] = idUser;
 					return _idsFeature[index];
 				}
 			}
@@ -41,25 +97,57 @@ namespace BH.Components
 
 		public void ReleaseFeature(CxId idUser)
 		{
-			var index = 0;
-			for(; index < _idsMap.Length; index++)
+			for(var index = 0; index < _idsUsersMap.Length; index++)
 			{
-				if(_idsMap[index] == idUser)
+				if(_idsUsersMap[index] == idUser)
 				{
-					_idsMap[index] = CxId.Empty;
+					_idsUsersMap[index] = CxId.Empty;
+				}
+			}
+		}
+
+		public void ReleaseAsset(CxId idUser)
+		{
+			for(var index = 0; index < _idsUsersMap.Length; index++)
+			{
+				if(_idsUsersMap[index] == idUser)
+				{
+					_isSpawned[index] = false;
+				}
+			}
+		}
+
+		public void AcquireAsset(CxId idUser)
+		{
+			for(var index = 0; index < _idsUsersMap.Length; index++)
+			{
+				if(_idsUsersMap[index] == idUser)
+				{
+					_isSpawned[index] = true;
 				}
 			}
 		}
 
 		public void Reset()
 		{
-			_idsFeature = Singleton<ServiceResources>.I
+			var idsFeature = Singleton<ServiceResources>.I
 				.GetProtoSettingsPawn()
 				.Features
 				.Select(_ => _.IdFeature)
 				.ToArray();
-			var size = _idsFeature.Length;
-			_idsMap = new CxId[size];
+			_idsFeature = new CxId[MAX_NUMBER_OR_PLAYERS_I];
+			_idsUsersMap = new CxId[MAX_NUMBER_OR_PLAYERS_I];
+			_isSpawned = new bool[MAX_NUMBER_OR_PLAYERS_I];
+
+			for(var index = 0; index < MAX_NUMBER_OR_PLAYERS_I; index++)
+			{
+				if(index < idsFeature.Length)
+				{
+					_idsFeature[index] = idsFeature[index];
+				}
+			}
+
+			// or default values
 		}
 
 		public void Dispose() { }
@@ -67,95 +155,89 @@ namespace BH.Components
 
 	public sealed class CmdPawnDestroy : ICommand<CompPawnSpawners>
 	{
-		public CxId IdModel;
+		public CxId IdUser;
 
 		public bool Assert(CompPawnSpawners context)
 		{
-			return Singleton<ServicePawns>.I.Instances.FindAs(_ => _.IdModel == IdModel) != null;
+			return Singleton<ServicePawns>.I.IsSpawned(IdUser);
 		}
 
 		public void Execute(CompPawnSpawners context)
 		{
-			var instance = Singleton<ServicePawns>.I.Instances.RemoveItemBy(_ => _.IdModel == IdModel);
-			context.Schedule(context.TaskDestroy(instance));
+			Singleton<ServicePawns>.I.ReleaseAsset(IdUser);
+			context.Schedule(context.TaskDestroy(IdUser));
 		}
 	}
 
 	public sealed class CmdPawnLobbyCreate : ICommand<CompPawnSpawners>
 	{
-		public CxId IdModel;
+		public CxId IdUser;
 
 		public bool Assert(CompPawnSpawners context)
 		{
-			var instance = Singleton<ServicePawns>.I.Instances.FindAs(_ => _.IdModel == IdModel);
-			var idsUser = new CxId[4];
-			var idUserCurrent = Singleton<ServiceNetwork>.I.NetworkModeShared.IdServerCurrent;
-			var users = Singleton<ServiceUI>.I.ModelsUser.GetRecentForHost(idsUser, idUserCurrent);
-			var isConditions = users < 4 && instance == null;
-
-			var notionPawn = instance == null ? "no pawn" : instance.IdModel.ShortForm();
-			$"pawn create conditions ({isConditions}): {notionPawn}; users: {users}".Log();
-
-			return users < 4 && instance == null;
-		}
-
-		public void Execute(CompPawnSpawners context)
-		{
-			var model = Singleton<ServiceUI>.I.ModelsUser.Get(IdModel, out var contains);
-			if(contains)
+			if(IdUser.IsEmpty)
 			{
-				context.Schedule(context.TaskSpawnForLobby(model));
+				"pawn create conditions: user id is empty".LogWarning();
+
+				return false;
 			}
-		}
-	}
 
-	public sealed class CmdPawnLobbySetChangeTo : ICommand<CompPawnSpawners>
-	{
-		public ModelViewServer Model;
+			if(Singleton<ServicePawns>.I.IsSpawned(IdUser))
+			{
+				$"pawn create conditions: exists ({IdUser})".Log();
+				
+				return false;
+			}
 
-		public bool Assert(CompPawnSpawners context)
-		{
+			if(Singleton<ServicePawns>.I.NumPawnsSpawned == Singleton<ServicePawns>.I.MaxPawnsSpawned)
+			{
+				$"pawn create conditions: spawn cap reached ({Singleton<ServicePawns>.I.NumPawnsSpawned})".Log();
+
+				return false;
+			}
+
 			return true;
 		}
 
 		public void Execute(CompPawnSpawners context)
 		{
-			throw new NotImplementedException();
+			Singleton<ServicePawns>.I.AcquireAsset(IdUser);
+			context.Schedule(context.TaskSpawnForLobby(IdUser));
+		}
+	}
 
-			var queue = Singleton<ServicePawns>.I.Instances;
-			var size = queue.Count;
-			for(var index = 0; index < size; index++)
+	public sealed class CmdPawnLobbySetChangeTo : ICommand<CompPawnSpawners>
+	{
+		public CxId IdServer;
+
+		public bool Assert(CompPawnSpawners context)
+		{
+			return !IdServer.IsEmpty;
+		}
+
+		public unsafe void Execute(CompPawnSpawners context)
+		{
+			var max = Singleton<ServicePawns>.I.MaxPawnsSpawned;
+			var idsBufferPtr = stackalloc CxId[max];
+
+			var numSpawned = Singleton<ServicePawns>.I.GetIdsSpawned(idsBufferPtr, max);
+			for(var index = 0; index < numSpawned; index++)
 			{
-				var instance = queue.Dequeue();
-				if(instance.IdModel != Singleton<ServiceNetwork>.I.IdCurrentUser)
-				{
-					context.Schedule(context.TaskDestroy(instance));
-				}
-				else
-				{
-					queue.Enqueue(instance);
-				}
+				Singleton<ServicePawns>.I.Events.Enqueue(
+					new CmdPawnDestroy
+					{
+						IdUser = idsBufferPtr[index],
+					});
 			}
 
-			if(Model.IdHost.IsEmpty)
+			var numRecent = Singleton<ServiceUI>.I.ModelsUser.GetRecentForHost(idsBufferPtr, max, IdServer);
+			for(var index = 0; index < numRecent; index++)
 			{
-				var buffer = new CxId[4];
-				var users = Singleton<ServiceUI>.I.ModelsUser.GetRecentForHost(buffer, Model.IdHost);
-				var isUserCurrent = Singleton<ServiceNetwork>.I.IdCurrentUser;
-				for(var index = 0; index < users; index++)
-				{
-					var idUser = buffer[index];
-					if(idUser == isUserCurrent)
+				Singleton<ServicePawns>.I.Events.Enqueue(
+					new CmdPawnLobbyCreate
 					{
-						continue;
-					}
-
-					Singleton<ServicePawns>.I.Events.Enqueue(
-						new CmdPawnLobbyCreate
-						{
-							IdModel = idUser,
-						});
-				}
+						IdUser = idsBufferPtr[index],
+					});
 			}
 		}
 	}

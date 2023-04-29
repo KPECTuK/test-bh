@@ -32,7 +32,7 @@ namespace BH.Components
 
 		[NonSerialized] public Vector3 CameraAnchor;
 
-		[NonSerialized] public CxId IdModel;
+		[NonSerialized] public CxId IdUser;
 
 		//? sync source
 		private readonly Stack<IDriverPawn> _driver = new();

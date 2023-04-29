@@ -80,7 +80,7 @@ namespace BH.Model
 			var builder = new StringBuilder()
 				.Append("<color=cyan>[")
 				.AppendFormat($"{{0,{_prefixSize}}}", prefix)
-				.Append("]</color> ");
+				.Append("(..)]</color> ");
 			return source.Insert(0, builder.ToString());
 		}
 
@@ -373,6 +373,13 @@ namespace BH.Model
 			}
 
 			return Color.magenta;
+		}
+
+		private static readonly Regex _nameFilter = new(@"((\\s|_|\.)?\(Clone\))?", RegexOptions.Compiled);
+
+		public static string CleanUpName(this string source)
+		{
+			return _nameFilter.Replace(source, string.Empty);
 		}
 	}
 }

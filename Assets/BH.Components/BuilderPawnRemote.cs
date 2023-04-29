@@ -13,7 +13,7 @@ namespace BH.Components
 				origin);
 
 			result.Builder = this;
-			result.IdModel = model.IdUser;
+			result.IdUser = model.IdUser;
 			result.InputReceiver = new InputPawnRemote(result);
 			result.InputReceiver.Enable();
 			result.Set(new DriverPawnRemote());

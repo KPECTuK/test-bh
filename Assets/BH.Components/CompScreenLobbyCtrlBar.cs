@@ -83,21 +83,29 @@ namespace BH.Components
 
 			load.IdModel = idModel;
 			ButtonWidgetInit(load);
-			load.OnClick = OnButtonItem;
+			load.OnClick = OnButtonItemServer;
 
 			yield break;
 		}
 
-		public IEnumerator TaskAppendButtonUser(CxId idModel)
+		public IEnumerator TaskAppendOrUpdateButtonUser(CxId idModel)
 		{
-			var load = Singleton<ServiceResources>.I.LoadAssetAsLibrary<CompScreenLobbyBtnUser>(
-				ServiceResources.ID_RESOURCE_UI_LOBBY_ITEM_USER_S,
-				transform,
-				new CxOrigin());
+			var instance = _buttons.Find(_ => _.IdModel == idModel);
+			if(instance is CompScreenLobbyBtnUser cast)
+			{
+				cast.UpdateView();
+			}
+			else
+			{
+				var load = Singleton<ServiceResources>.I.LoadAssetAsLibrary<CompScreenLobbyBtnUser>(
+					ServiceResources.ID_RESOURCE_UI_LOBBY_ITEM_USER_S,
+					transform,
+					new CxOrigin());
 
-			load.IdModel = idModel;
-			ButtonWidgetInit(load);
-			load.OnClick = OnButtonItem;
+				load.IdModel = idModel;
+				ButtonWidgetInit(load);
+				load.OnClick = OnButtonItem;
+			}
 
 			yield break;
 		}
@@ -108,6 +116,13 @@ namespace BH.Components
 			if(button != null)
 			{
 				button.UpdateView();
+			}
+			else
+			{
+				_buttons.ToText(
+						$"button is not found: {idModel.ShortForm()} of buttons:",
+						_ => _.IdModel.ShortForm())
+					.LogWarning();
 			}
 
 			yield break;
@@ -153,7 +168,7 @@ namespace BH.Components
 			yield break;
 		}
 
-		private void OnButtonItem(ModelViewServer model)
+		private void OnButtonItemServer(CxId idServer)
 		{
 			"press: 'Server'".Log();
 
@@ -161,22 +176,22 @@ namespace BH.Components
 			ref var modelUser = ref Singleton<ServiceUI>.I.ModelsUser.Get(idUser, out var contains);
 			if(!contains)
 			{
-				throw new Exception($"not contains: {model}");
+				throw new Exception($"can't find local user with id: {idServer.ShortForm()}");
 			}
 
-			if(modelUser.IdHostAt == model.IdHost)
+			if(modelUser.IdHostAt == idServer)
 			{
 				return;
 			}
 
 			//TODO: the only place where user desc data is not sufficient: remove direct assignment using command
-			modelUser.IdHostAt = model.IdHost;
-			Scheduler.Schedule(TaskUpdateFocus);
+			modelUser.IdHostAt = idServer;
+			Scheduler.PassThrough.Schedule(TaskUpdateFocus);
 
 			Singleton<ServicePawns>.I.Events.Enqueue(
 				new CmdPawnLobbySetChangeTo
 				{
-					Model = model,
+					IdServer = idServer,
 				});
 		}
 

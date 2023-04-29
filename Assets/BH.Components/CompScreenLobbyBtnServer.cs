@@ -8,7 +8,7 @@ namespace BH.Components
 {
 	public sealed class CompScreenLobbyBtnServer : CompScreenLobbyBtnBase
 	{
-		[NonSerialized] public Action<ModelViewServer> OnClick;
+		[NonSerialized] public Action<CxId> OnClick;
 
 		public TextMeshProUGUI TextOwner;
 		public TextMeshProUGUI TextServer;
@@ -24,11 +24,7 @@ namespace BH.Components
 			_initial = Back.color;
 
 			var button = GetComponent<Button>();
-			button.onClick.AddListener(() =>
-			{
-				ref var model = ref Singleton<ServiceUI>.I.ModelsServer.Get(IdModel, out var contains);
-				OnClick?.Invoke(model);
-			});
+			button.onClick.AddListener(() => { OnClick?.Invoke(IdModel); });
 		}
 
 		public override void UpdateView()

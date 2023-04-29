@@ -8,8 +8,17 @@ namespace BH.Components
 {
 	public sealed class CompPawnSpawners : MonoBehaviour
 	{
-		private readonly Queue<IEnumerator> _tasks = new();
+		//? scheduler
+
 		private Transform[] _locators;
+		private readonly List<CompPawn> _pawns = new();
+
+		private readonly Queue<IEnumerator> _tasks = new();
+
+		public void Schedule(IEnumerator task)
+		{
+			_tasks.Enqueue(task);
+		}
 
 		private void Awake()
 		{
@@ -23,42 +32,14 @@ namespace BH.Components
 			}
 
 			_locators = buffer.ToArray();
-			_locators.ToText("spawn points found").Log();
+			_locators.ToText("spawn points found", _ => $"'{_.name}': {_.transform.position}").Log();
 		}
 
 		private void Update()
 		{
-			// not a resharper issue
-			for(int index = 0,
-				size = _tasks.Count; index < size; index++)
-			{
-				var task = _tasks.Dequeue();
-				if(task.MoveNext())
-				{
-					_tasks.Enqueue(task);
-				}
-			}
+			_tasks.ExecuteTasksSimultaneously();
 
-			while(Singleton<ServicePawns>.I.Events.TryPeek(out var @event))
-			{
-				TryRunCommand(@event);
-			}
-		}
-
-		private void TryRunCommand(ICommand<CompPawnSpawners> @event)
-		{
-			if(@event.Assert(this))
-			{
-				$"running pawns command: {@event.GetType().NameNice()}".Log();
-
-				@event.Execute(this);
-			}
-			else
-			{
-				$"skip pawns command due conditions: {@event.GetType().NameNice()}".LogWarning();
-			}
-
-			Singleton<ServicePawns>.I.Events.Dequeue();
+			Singleton<ServicePawns>.I.Events.TryExecuteCommandQueue(this);
 		}
 
 		private Vector3 FindSpawnPoint()
@@ -66,32 +47,29 @@ namespace BH.Components
 			for(var indexLocator = 0; indexLocator < _locators.Length; indexLocator++)
 			{
 				var locator = _locators[indexLocator];
-				var queue = Singleton<ServicePawns>.I.Instances;
-				var size = queue.Count;
-				var isOccupied = false;
-				for(var indexPawn = 0; indexPawn < size; indexPawn++)
+				var isFree = true;
+				for(var indexPawn = 0; indexPawn < _pawns.Count; indexPawn++)
 				{
-					var instance = queue.Dequeue();
-					queue.Enqueue(instance);
+					var instance = _pawns[indexPawn];
 
-					if(instance.Agent.Raycast(instance.transform.position, out var positionPawn))
+					if(instance.Agent.Raycast(instance.transform.position, out var hitPawn))
 					{
 						throw new Exception("pawn position is out of area");
 					}
 
-					if(instance.Agent.Raycast(locator.position, out var positionLocator))
+					if(instance.Agent.Raycast(locator.position, out var hitLocator))
 					{
 						throw new Exception("spawn position is out of area");
 					}
 
 					const float DOUBLE_PAWN_RADIUS_F = 1f;
-					var distance = (positionLocator.position - positionPawn.position).magnitude;
-					isOccupied = isOccupied || distance > DOUBLE_PAWN_RADIUS_F;
+					var distance = (hitLocator.position - hitPawn.position).magnitude;
+					isFree = isFree && distance > DOUBLE_PAWN_RADIUS_F;
 				}
 
-				if(!isOccupied)
+				if(isFree)
 				{
-					$"spawn point found: {locator.position}".Log();
+					_pawns.ToText($"spawn point found: {locator.position}, in pawns collection").Log();
 
 					return locator.position;
 				}
@@ -102,25 +80,47 @@ namespace BH.Components
 			throw new Exception("no spawn point found");
 		}
 
-		public void Schedule(IEnumerator task)
+		private CompPawn GetPawnBy(CxId idUser)
 		{
-			_tasks.Enqueue(task);
+			for(var index = 0; index < _pawns.Count; index++)
+			{
+				if(_pawns[index].IdUser == idUser)
+				{
+					return _pawns[index];
+				}
+			}
+
+			return null;
 		}
 
-		public IEnumerator TaskDestroy(CompPawn instance)
+		public IEnumerator TaskDestroy(CxId idUser)
 		{
+			var instance = GetPawnBy(idUser);
+			if(instance == null)
+			{
+				throw new Exception($"can't find pawn for user id: {idUser}");
+			}
+
+			_pawns.Remove(instance);
 			instance.Builder.Destroy(instance);
 
-			$"pawn for [{instance.IdModel}] had been destroyed".Log();
+			$"pawn for [{idUser}] had been destroyed".Log();
 
 			yield break;
 		}
 
-		public IEnumerator TaskSpawnForLobby(ModelViewUser model)
+		public IEnumerator TaskSpawnForLobby(CxId idUser)
 		{
 			var positionSpawn = FindSpawnPoint();
 			var orientationSpawn = Quaternion.LookRotation(-positionSpawn.normalized, Vector3.up);
+			var model = Singleton<ServiceUI>.I.ModelsUser.Get(idUser, out var contains);
 
+			if(!contains)
+			{
+				throw new Exception($"can't find model for user id: {idUser}");
+			}
+
+			// yield to load
 			var instance = Singleton<ServiceResources>.I
 				.BuildPawn<BuilderPawnLobby>(
 					null,
@@ -130,8 +130,7 @@ namespace BH.Components
 						Orientation = orientationSpawn,
 					},
 					model);
-
-			Singleton<ServicePawns>.I.Instances.Enqueue(instance);
+			_pawns.Add(instance);
 
 			$"pawn for [{model.IdUser}] created at: {positionSpawn}".Log();
 
