@@ -20,6 +20,9 @@ namespace BH.Components
 		{
 			// scenes reload purpose
 
+			$"current machine id: <color=yellow>{IdCurrentMachine.ShortForm()}</color>".Log();
+			$"current user id: <color=yellow>{IdCurrentUser.ShortForm()}</color>".Log();
+
 			Events.Enqueue(new CmdNetworkModeChange { Target = new NetworkModeDisabled() });
 
 			"initialized: network".Log();
@@ -88,11 +91,13 @@ namespace BH.Components
 			{
 				IdUser = idUser,
 				IsReady = false,
+				// not selected
 				IdHostAt = CxId.Empty,
-				IdFeature = Singleton<ServicePawns>.I.GetNextFeatureAvailableTo(idUser),
+				// will be given by server
+				IdFeature = CxId.Empty,
 			};
 
-			if(ExtensionsView.TryAppendUser(ref desc, Singleton<ServiceNetwork>.I.IdCurrentMachine, out idUser))
+			if(ExtensionsView.TryAppendUser(ref desc, out idUser))
 			{
 				Singleton<ServiceUI>.I.Events.Enqueue(
 					new CmdViewLobbyUserAppend
@@ -100,6 +105,13 @@ namespace BH.Components
 						IdUser = idUser,
 					});
 			}
+
+			Singleton<ServicePawns>.I.Events.Enqueue(
+				new CmdPawnLobbySetChangeTo()
+				{
+					// for local only: remote server is not selected
+					IdServer = CxId.Empty,
+				});
 
 			// kind of unknown error
 			if(!Discovery.StartDiscoveryClient())
@@ -113,7 +125,17 @@ namespace BH.Components
 
 		public void Disable()
 		{
-			// sets states as a result
+			var idUserCurrent = Singleton<ServiceNetwork>.I.IdCurrentUser;
+			var modelUser = Singleton<ServiceUI>.I.ModelsUser.Get(idUserCurrent, out var contains);
+
+			// not selected
+			if(!modelUser.IdHostAt.IsEmpty)
+			{
+				Manager.networkAddress = Discovery.GetEpFor(modelUser.IdHostAt).ToString();
+			}
+
+			// sets states as a result for next mode (game) - not good but MVP
+			// will be better to build process result as a separate object
 
 			Discovery.StopDiscoveryClient();
 
@@ -134,7 +156,7 @@ namespace BH.Components
 			return new Request
 			{
 				IdClientMachine = Singleton<ServiceNetwork>.I.IdCurrentMachine,
-				Owner = modelUser.Data,
+				Owner = modelUser.CreateData,
 			};
 		}
 
@@ -142,6 +164,8 @@ namespace BH.Components
 		{
 			if(ExtensionsView.TryAppendServer(ref response, out var idServer))
 			{
+				$"operation scheduled APPEND over <color=white>(server)</color> model: {idServer.ShortForm()}".Log();
+
 				Singleton<ServiceUI>.I.Events.Enqueue(
 					new CmdViewLobbyServerAppend
 					{
@@ -156,6 +180,8 @@ namespace BH.Components
 		{
 			if(ExtensionsView.TryUpdateServer(ref response, out var idServer))
 			{
+				$"operation scheduled UPDATE over <color=white>(server)</color> model: {idServer.ShortForm()}".Log();
+
 				Singleton<ServiceUI>.I.Events.Enqueue(
 					new CmdViewLobbyServerUpdate
 					{
@@ -164,20 +190,136 @@ namespace BH.Components
 			}
 
 			MaintainPartyUsers(response);
+
+			Singleton<ServiceNetwork>.I.Events.Enqueue(
+				new CmdNetworkTryStartGame());
 		}
 
 		private void OnServerLost(CxId idServer)
 		{
 			if(ExtensionsView.TryRemoveServer(idServer))
 			{
+				$"operation scheduled REMOVE over <color=white>(server)</color> model: {idServer.ShortForm()}".Log();
+
 				Singleton<ServiceUI>.I.Events.Enqueue(
 					new CmdViewLobbyServerRemove
 					{
 						IdServer = idServer,
 					});
+
+				var idUserCurrent = Singleton<ServiceNetwork>.I.IdCurrentUser;
+				var set = Singleton<ServiceUI>.I.ModelsUser;
+				var setSize = set.Count;
+				for(var count = 0; count < setSize; count++)
+				{
+					var modelUser = set.Dequeue(out var contains);
+
+					if(modelUser.IdHostAt != idServer)
+					{
+						set.Enqueue(modelUser);
+
+						continue;
+					}
+
+					if(modelUser.IdUser == idUserCurrent)
+					{
+						modelUser.IdHostAt = CxId.Empty;
+
+						set.Enqueue(modelUser);
+
+						$"operation scheduled UPDATE over <color=white>(user: local)</color> model: {modelUser.IdUser.ShortForm()}".Log();
+
+						Singleton<ServiceUI>.I.Events.Enqueue(
+							new CmdViewLobbyUserUpdate
+							{
+								IdUser = modelUser.IdUser
+							});
+
+						Singleton<ServicePawns>.I.Events.Enqueue(
+							new CmdPawnLobbySetChangeTo()
+							{
+								IdServer = modelUser.IdHostAt,
+							});
+
+						continue;
+					}
+
+					$"operation scheduled REMOVE over <color=white>(user: remote)</color> model: {modelUser.IdUser.ShortForm()}".Log();
+
+					Singleton<ServiceUI>.I.Events.Enqueue(
+						new CmdViewLobbyUserRemove
+						{
+							IdUser = modelUser.IdUser
+						});
+				}
+
+				if(setSize > 0)
+				{
+					Singleton<ServiceUI>.I.ModelsUser.DeFragment();
+				}
+			}
+		}
+
+		private bool UpdatePartyUser(DataUser data, string userNote)
+		{
+			if(ExtensionsView.TryUpdateUser(ref data, out var idUser))
+			{
+				$"operation scheduled UPDATE over <color=white>(user: {userNote})</color> model: {idUser.ShortForm()}".Log();
+
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserUpdate
+					{
+						IdUser = idUser,
+					});
+
+				// server pawn is constant
+				// pawn set selection authority is local
+				// so no need to create pawns here
+
+				// update server authority values
+				if(idUser == Singleton<ServiceNetwork>.I.IdCurrentUser)
+				{
+					// can be rejected by no update, have to use that result to create buttons on update
+					Singleton<ServicePawns>.I.Events.Enqueue(
+						new CmdPawnAppendOrUpdateLobby
+						{
+							IdUser = idUser,
+						});
+				}
+
+				return true;
 			}
 
-			ExtensionsView.TryRemoveUsersByHost(idServer);
+			return false;
+		}
+
+		private bool AppendPartyUser(DataUser data, string userNote)
+		{
+			if(ExtensionsView.TryAppendUser(ref data, out var idUser))
+			{
+				$"operation scheduled APPEND over <color=white>(user: {userNote})</color> model: {idUser}".Log();
+
+				Singleton<ServiceUI>.I.Events.Enqueue(
+					new CmdViewLobbyUserAppend
+					{
+						IdUser = idUser,
+					});
+
+				// server pawn is constant
+				// pawn set selection authority is local
+				// so no need to create pawns here
+
+				// can be rejected by no update, have to use that result to create buttons on update
+				//Singleton<ServicePawns>.I.Events.Enqueue(
+				//	new CmdPawnAppendOrUpdateLobby
+				//	{
+				//		IdUser = idUser,
+				//	});
+
+				return true;
+			}
+
+			return false;
 		}
 
 		/// <summary>
@@ -188,111 +330,59 @@ namespace BH.Components
 		/// </remarks>
 		private void MaintainPartyUsers(Response response)
 		{
-			// TODO: receive IdFeature from the server, selected currently
+			// authority
+			var idUserCurrent = Singleton<ServiceNetwork>.I.IdCurrentUser;
+			var modelUser = Singleton<ServiceUI>.I.ModelsUser.Get(idUserCurrent, out var contains);
 
-			if(ExtensionsView.TryUpdateUser(ref response.Owner, response.IdHost, out var idUser))
+			if(contains && response.Party_01.IdUser == idUserCurrent)
 			{
-				response.Owner = default;
-
-				Singleton<ServiceUI>.I.Events.Enqueue(
-					new CmdViewLobbyUserUpdate
-					{
-						IdUser = idUser,
-					});
+				response.Party_01.IsReady = modelUser.IsReady;
+				response.Party_01.IdHostAt = modelUser.IdHostAt;
 			}
 
-			if(ExtensionsView.TryUpdateUser(ref response.Party_01, response.IdHost, out idUser))
+			if(contains && response.Party_02.IdUser == idUserCurrent)
 			{
-				response.Party_01 = default;
-
-				Singleton<ServiceUI>.I.Events.Enqueue(
-					new CmdViewLobbyUserUpdate
-					{
-						IdUser = idUser,
-					});
+				response.Party_02.IsReady = modelUser.IsReady;
+				response.Party_02.IdHostAt = modelUser.IdHostAt;
 			}
 
-			if(ExtensionsView.TryUpdateUser(ref response.Party_02, response.IdHost, out idUser))
+			if(contains && response.Party_03.IdUser == idUserCurrent)
 			{
-				response.Party_02 = default;
-
-				Singleton<ServiceUI>.I.Events.Enqueue(
-					new CmdViewLobbyUserUpdate
-					{
-						IdUser = idUser,
-					});
+				response.Party_03.IsReady = modelUser.IsReady;
+				response.Party_03.IdHostAt = modelUser.IdHostAt;
 			}
 
-			if(ExtensionsView.TryUpdateUser(ref response.Party_03, response.IdHost, out idUser))
-			{
-				response.Party_03 = default;
+			// update
+			response.Owner = UpdatePartyUser(response.Owner, "owner") ? default : response.Owner;
+			response.Party_01 = UpdatePartyUser(response.Party_01, "party 1") ? default : response.Party_01;
+			response.Party_02 = UpdatePartyUser(response.Party_02, "party 2") ? default : response.Party_02;
+			response.Party_03 = UpdatePartyUser(response.Party_03, "party 3") ? default : response.Party_03;
 
-				Singleton<ServiceUI>.I.Events.Enqueue(
-					new CmdViewLobbyUserUpdate
-					{
-						IdUser = idUser,
-					});
-			}
+			// append
+			response.Owner = AppendPartyUser(response.Owner, "owner") ? default : response.Owner;
+			response.Party_01 = AppendPartyUser(response.Party_01, "party 1") ? default : response.Party_01;
+			response.Party_02 = AppendPartyUser(response.Party_02, "party 2") ? default : response.Party_02;
+			response.Party_03 = AppendPartyUser(response.Party_03, "party 3") ? default : response.Party_03;
 
-			if(ExtensionsView.TryAppendUser(ref response.Owner, response.IdHost, out idUser))
-			{
-				response.Owner = default;
-
-				Singleton<ServiceUI>.I.Events.Enqueue(
-					new CmdViewLobbyUserAppend
-					{
-						IdUser = idUser,
-					});
-			}
-
-			if(ExtensionsView.TryAppendUser(ref response.Party_01, response.IdHost, out idUser))
-			{
-				response.Party_01 = default;
-
-				Singleton<ServiceUI>.I.Events.Enqueue(
-					new CmdViewLobbyUserAppend
-					{
-						IdUser = idUser,
-					});
-			}
-
-			if(ExtensionsView.TryAppendUser(ref response.Party_02, response.IdHost, out idUser))
-			{
-				response.Party_02 = default;
-
-				Singleton<ServiceUI>.I.Events.Enqueue(
-					new CmdViewLobbyUserAppend
-					{
-						IdUser = idUser,
-					});
-			}
-
-			if(ExtensionsView.TryAppendUser(ref response.Party_03, response.IdHost, out idUser))
-			{
-				response.Party_03 = default;
-
-				Singleton<ServiceUI>.I.Events.Enqueue(
-					new CmdViewLobbyUserAppend
-					{
-						IdUser = idUser,
-					});
-			}
-
+			// check
 			if(!response.Owner.IdUser.IsEmpty)
 			{
-				$"NO operation performed for <color=white>(user)</color> model: {response.Owner.IdUser}".Log();
+				$"NO operation performed for <color=white>(user: owner)</color> model: {response.Owner.IdUser}".Log();
 			}
+
 			if(!response.Party_01.IdUser.IsEmpty)
 			{
-				$"NO operation performed for <color=white>(user)</color> model: {response.Party_01.IdUser}".Log();
+				$"NO operation performed for <color=white>(user: party 1)</color> model: {response.Party_01.IdUser}".Log();
 			}
+
 			if(!response.Party_02.IdUser.IsEmpty)
 			{
-				$"NO operation performed for <color=white>(user)</color> model: {response.Party_02.IdUser}".Log();
+				$"NO operation performed for <color=white>(user: party 2)</color> model: {response.Party_02.IdUser}".Log();
 			}
+
 			if(!response.Party_03.IdUser.IsEmpty)
 			{
-				$"NO operation performed for <color=white>(user)</color> model: {response.Party_03.IdUser}".Log();
+				$"NO operation performed for <color=white>(user: party 3)</color> model: {response.Party_03.IdUser}".Log();
 			}
 		}
 	}
@@ -328,7 +418,7 @@ namespace BH.Components
 				Owner = new DataUser
 				{
 					IdUser = Singleton<ServiceNetwork>.I.IdCurrentUser,
-					IdFeature = CxId.Empty,
+					IdFeature = Singleton<ServicePawns>.I.GetNextFeatureAvailableTo(Singleton<ServiceNetwork>.I.IdCurrentUser),
 					IdHostAt = Singleton<ServiceNetwork>.I.IdCurrentMachine,
 					IsReady = false,
 				},
@@ -343,7 +433,7 @@ namespace BH.Components
 					});
 			}
 
-			if(ExtensionsView.TryAppendUser(ref desc.Owner, Singleton<ServiceNetwork>.I.IdCurrentMachine, out var idUser))
+			if(ExtensionsView.TryAppendUser(ref desc.Owner, out var idUser))
 			{
 				Singleton<ServiceUI>.I.Events.Enqueue(
 					new CmdViewLobbyUserAppend
@@ -351,6 +441,12 @@ namespace BH.Components
 						IdUser = idUser,
 					});
 			}
+
+			Singleton<ServicePawns>.I.Events.Enqueue(
+				new CmdPawnLobbySetChangeTo()
+				{
+					IdServer = Singleton<ServiceNetwork>.I.IdCurrentMachine,
+				});
 
 			if(!Discovery.StartDiscoveryServer())
 			{
@@ -363,7 +459,8 @@ namespace BH.Components
 
 		public void Disable()
 		{
-			// sets states as a result
+			// sets states as a result for next mode (game) - not good but MVP
+			// will be better to build process result as a separate object
 
 			Discovery.StopDiscoveryServer();
 
@@ -375,7 +472,7 @@ namespace BH.Components
 		public unsafe Response BuildState()
 		{
 			// ReSharper disable once InconsistentNaming
-			static string dump(ModelViewUser model)
+			static string dump(ModelUser model)
 			{
 				return $"host: {model.IdHostAt.ShortForm()}; user: {model.IdUser.ShortForm()}; feature: {model.IdFeature.ShortForm()}";
 			}
@@ -386,7 +483,7 @@ namespace BH.Components
 				cacheIdsPtr,
 				ServicePawns.MAX_NUMBER_OR_PLAYERS_I,
 				Singleton<ServiceNetwork>.I.IdCurrentMachine);
-			var cacheModelsPtr = stackalloc ModelViewUser[users];
+			var cacheModelsPtr = stackalloc ModelUser[users];
 			for(var indexIds = 0; indexIds < users; indexIds++)
 			{
 				cacheModelsPtr[indexIds] = Singleton<ServiceUI>.I.ModelsUser.Get(
@@ -394,9 +491,8 @@ namespace BH.Components
 					out var contains);
 			}
 
-			//! noisy
 			#if UNITY_EDITOR
-			var dumpBuffer = new ModelViewUser[ServicePawns.MAX_NUMBER_OR_PLAYERS_I];
+			var dumpBuffer = new ModelUser[ServicePawns.MAX_NUMBER_OR_PLAYERS_I];
 			for(var index = 0; index < users; index++)
 			{
 				dumpBuffer[index] = cacheModelsPtr[index];
@@ -412,29 +508,38 @@ namespace BH.Components
 			response.IdHost = Singleton<ServiceNetwork>.I.IdCurrentMachine;
 			response.ServerUsersTotal = Singleton<ServiceUI>.I.ModelsUser.Count;
 
-			response.Owner = users < 1 ? default : cacheModelsPtr[0].Data;
+			response.Owner = users < 1 ? default : cacheModelsPtr[0].CreateData;
 
 			if(response.Owner.IdUser != Singleton<ServiceNetwork>.I.IdCurrentUser)
 			{
 				throw new Exception($"current user is not an owner: (current: {response.Owner.IdUser} expected: {Singleton<ServiceNetwork>.I.IdCurrentUser})");
 			}
 
-			response.Party_01 = users < 2 ? default : cacheModelsPtr[1].Data;
-			response.Party_02 = users < 3 ? default : cacheModelsPtr[2].Data;
-			response.Party_03 = users < 4 ? default : cacheModelsPtr[3].Data;
+			response.Party_01 = users < 2 ? default : cacheModelsPtr[1].CreateData;
+			response.Party_02 = users < 3 ? default : cacheModelsPtr[2].CreateData;
+			response.Party_03 = users < 4 ? default : cacheModelsPtr[3].CreateData;
 
 			return response;
 		}
 
 		private void OnUserFound(Request request)
 		{
-			var desc = request.Owner;
-			desc.IdFeature = Singleton<ServicePawns>.I.GetNextFeatureAvailableTo(desc.IdUser);
+			// authority
+			request.Owner.IdFeature = Singleton<ServicePawns>.I.GetNextFeatureAvailableTo(request.Owner.IdUser);
 
-			if(ExtensionsView.TryAppendUser(ref desc, Singleton<ServiceNetwork>.I.IdCurrentMachine, out var idUser))
+			// append
+			if(ExtensionsView.TryAppendUser(ref request.Owner, out var idUser))
 			{
+				$"operation scheduled APPEND over <color=white>(user)</color> model: {idUser.ShortForm()}".Log();
+
 				Singleton<ServiceUI>.I.Events.Enqueue(
 					new CmdViewLobbyUserAppend
+					{
+						IdUser = idUser,
+					});
+
+				Singleton<ServicePawns>.I.Events.Enqueue(
+					new CmdPawnAppendOrUpdateLobby
 					{
 						IdUser = idUser,
 					});
@@ -443,25 +548,67 @@ namespace BH.Components
 
 		private void OnUserUpdated(Request request)
 		{
-			var desc = request.Owner;
-			desc.IdFeature = Singleton<ServicePawns>.I.GetNextFeatureAvailableTo(desc.IdUser);
+			// authority
+			request.Owner.IdFeature = Singleton<ServicePawns>.I.GetNextFeatureAvailableTo(request.Owner.IdUser);
+			
+			var modelUser = Singleton<ServiceUI>.I.ModelsUser.Get(request.Owner.IdUser, out var contains);
 
-			if(ExtensionsView.TryUpdateUser(ref desc, Singleton<ServiceNetwork>.I.IdCurrentMachine, out var idUser))
+			// update
+			if(ExtensionsView.TryUpdateUser(ref request.Owner, out var idUser))
 			{
-				Singleton<ServiceUI>.I.Events.Enqueue(
-					new CmdViewLobbyUserUpdate
-					{
-						IdUser = idUser,
-					});
+				if(contains && modelUser.IdHostAt != request.Owner.IdHostAt && request.Owner.IdHostAt.IsEmpty)
+				{
+					$"operation scheduled REMOVE over <color=white>(user)</color> model: {idUser.ShortForm()}".Log();
+
+					Singleton<ServiceUI>.I.Events.Enqueue(
+						new CmdViewLobbyUserRemove
+						{
+							IdUser = idUser,
+						});
+
+					Singleton<ServicePawns>.I.Events.Enqueue(
+						new CmdPawnDestroy
+						{
+							IdUser = idUser,
+						});
+				}
+				else
+				{
+					$"operation scheduled UPDATE over <color=white>(user)</color> model: {idUser.ShortForm()}".Log();
+
+					Singleton<ServiceUI>.I.Events.Enqueue(
+						new CmdViewLobbyUserUpdate
+						{
+							IdUser = idUser,
+						});
+
+					Singleton<ServicePawns>.I.Events.Enqueue(
+						new CmdPawnAppendOrUpdateLobby
+						{
+							IdUser = idUser,
+						});
+				}
 			}
+
+			Singleton<ServiceNetwork>.I.Events.Enqueue(
+				new CmdNetworkTryStartGame());
 		}
 
 		private void OnUserLost(CxId idUser)
 		{
+			// remove
 			if(ExtensionsView.TryRemoveUser(idUser))
 			{
+				$"operation scheduled REMOVE over <color=white>(user)</color> model: {idUser.ShortForm()}".Log();
+
 				Singleton<ServiceUI>.I.Events.Enqueue(
 					new CmdViewLobbyUserRemove
+					{
+						IdUser = idUser,
+					});
+				
+				Singleton<ServicePawns>.I.Events.Enqueue(
+					new CmdPawnDestroy
 					{
 						IdUser = idUser,
 					});
@@ -479,9 +626,25 @@ namespace BH.Components
 				.Find(_ => _.IdUser == Singleton<ServiceNetwork>.I.IdCurrentUser, out var contains)
 				.IdHostAt;
 
-		public void Enable() { }
+		public void Enable()
+		{
+			Singleton<ServiceUI>.I.Events.Enqueue(
+				new CmdViewScreenChange
+				{
+					NameScreen = ServiceUI.SCREEN_GAME_S,
+				});
 
-		public void Disable() { }
+			// remove all pawns for lobby
+			// create all pawns for game
+			// set spectator for local
+
+			//Manager.StartClient();
+		}
+
+		public void Disable()
+		{
+			//Manager.StopClient();
+		}
 	}
 
 	public class NetworkModeGameAsServer : INetworkMode
@@ -491,21 +654,37 @@ namespace BH.Components
 
 		public CxId IdServerCurrent => Singleton<ServiceNetwork>.I.IdCurrentMachine;
 
-		public void Enable() { }
+		public void Enable()
+		{
+			Singleton<ServiceUI>.I.Events.Enqueue(
+				new CmdViewScreenChange
+				{
+					NameScreen = ServiceUI.SCREEN_GAME_S,
+				});
 
-		public void Disable() { }
+			// remove all pawns for lobby
+			// create all pawns for game
+			// set spectator for local
+
+			//Manager.StartHost();
+		}
+
+		public void Disable()
+		{
+			//Manager.StopHost();
+		}
 	}
 
-	public sealed class CmdNetworkModeChange : ICommand<CompApp>
+	public class CmdNetworkModeChange : ICommand<CompApp>
 	{
 		public INetworkMode Target;
 
-		public bool Assert(CompApp context)
+		public virtual bool Assert(CompApp context)
 		{
 			return true;
 		}
 
-		public void Execute(CompApp context)
+		public virtual void Execute(CompApp context)
 		{
 			Target.Manager = context.GetComponent<CompNetworkManager>();
 			Target.Discovery = context.GetComponent<CompNetworkDiscovery>();
@@ -518,6 +697,70 @@ namespace BH.Components
 			Singleton<ServiceNetwork>.I.NetworkModeShared.Enable();
 
 			$"network mode has changed to: <color=cyan>{Target.GetType().NameNice()}</color>".Log();
+
+			if(Target is NetworkModeLobbyServer or NetworkModeLobbyClient)
+			{
+				context.IsGameStart = false;
+			}
+		}
+	}
+
+	public sealed class CmdNetworkTryStartGame : CmdNetworkModeChange
+	{
+		public override unsafe bool Assert(CompApp context)
+		{
+			if(!base.Assert(context))
+			{
+				return false;
+			}
+
+			var modelUserCurrent = Singleton<ServiceUI>.I.ModelsUser.Get(Singleton<ServiceNetwork>.I.IdCurrentUser, out var contains);
+			var idsRecentPtr = stackalloc CxId[ServicePawns.MAX_NUMBER_OR_PLAYERS_I];
+			var numPlayers = Singleton<ServiceUI>.I.ModelsUser.GetRecentForHost(
+				idsRecentPtr,
+				ServicePawns.MAX_NUMBER_OR_PLAYERS_I,
+				modelUserCurrent.IdHostAt);
+
+			var @is = numPlayers > 1;
+
+			for(var index = 0; index < numPlayers; index++)
+			{
+				var modelUser = Singleton<ServiceUI>.I.ModelsUser.Get(idsRecentPtr[index], out contains);
+				@is = @is && modelUser.IsReady;
+			}
+
+			if(!@is)
+			{
+				var builder = new StringBuilder($"try start game condition for players: {numPlayers}\n");
+				for(var index = 0; index < numPlayers; index++)
+				{
+					var modelUser = Singleton<ServiceUI>.I.ModelsUser.Get(idsRecentPtr[index], out contains);
+					builder
+						.Append($"for user {modelUser.IdUser.ShortForm()} status: {(modelUser.IsReady ? "ready" : "busy")}")
+						.AppendLine();
+				}
+				builder.Log();
+			}
+
+			return @is;
+		}
+
+		public override void Execute(CompApp context)
+		{
+			if(Singleton<ServiceNetwork>.I.NetworkModeShared is NetworkModeLobbyServer && !context.IsGameStart)
+			{
+				// bicycle )) to notify all clients: game start
+				context.StartCoroutine(context.TaskWaitToNotify());
+
+				return;
+			}
+
+			if(Singleton<ServiceNetwork>.I.NetworkModeShared is NetworkModeLobbyClient)
+			{
+				Target = new NetworkModeGameAsClient();
+			}
+
+			base.Execute(context);
 		}
 	}
 }

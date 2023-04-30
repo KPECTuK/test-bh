@@ -1,3 +1,4 @@
+using System.Collections;
 using BH.Model;
 using kcp2k;
 using UnityEngine;
@@ -12,6 +13,8 @@ namespace BH.Components
 	[RequireComponent(typeof(CompNetworkDiscovery))]
 	public class CompApp : MonoBehaviour
 	{
+		public bool IsGameStart;
+
 		private void Awake()
 		{
 			//Screen.fullScreen = true;
@@ -44,6 +47,20 @@ namespace BH.Components
 			//Screen.fullScreen = false;
 
 			"disposed".Log();
+		}
+
+		public IEnumerator TaskWaitToNotify()
+		{
+			IsGameStart = true;
+
+			var discovery = GetComponent<CompNetworkDiscovery>();
+			yield return new WaitForSeconds(discovery.ActiveDiscoveryInterval);
+
+			Singleton<ServiceNetwork>.I.Events.Enqueue(
+				new CmdNetworkModeChange
+				{
+					Target = new NetworkModeGameAsServer(),
+				});
 		}
 
 		private void Update()

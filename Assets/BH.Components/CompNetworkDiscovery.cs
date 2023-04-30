@@ -163,12 +163,12 @@ namespace BH.Components
 							{
 								info.Ep = @event.ep;
 								info.Updated = DateTime.UtcNow;
-								//info.IdUser = @event.request.Owner.IdUser;
+								info.IdUser = @event.request.Owner.IdUser;
 
 								new StringBuilder()
 									.Append("Q (request) [")
 									.Append(Thread.CurrentThread.ManagedThreadId)
-									.Append("] <color=yellow>USER updated</color>: ")
+									.Append("] <color=yellow>USER updated</color> for user id: ")
 									.Append(@event.request.Owner.IdUser.ShortForm())
 									.Log();
 
@@ -180,14 +180,14 @@ namespace BH.Components
 									new Info
 									{
 										Ep = @event.ep,
-										IdUser = @event.request.Owner.IdUser,
 										Updated = DateTime.UtcNow,
+										IdUser = @event.request.Owner.IdUser,
 									});
 
 								new StringBuilder()
 									.Append("Q (request) [")
 									.Append(Thread.CurrentThread.ManagedThreadId)
-									.Append("] <color=lime>USER found</color>: ")
+									.Append("] <color=lime>USER found</color> for user id: ")
 									.Append(@event.request.Owner.IdUser.ShortForm())
 									.Log();
 
@@ -196,20 +196,20 @@ namespace BH.Components
 						}
 
 						// all the client machines on server side (only)
-						var keys = _info
+						var pairs = _info
 							.Where(_ => (DateTime.UtcNow - _.Value.Updated).TotalSeconds > ActiveDiscoveryInterval * 2f)
 							.ToArray();
 
-						foreach(var key in keys)
+						foreach(var pair in pairs)
 						{
 							new StringBuilder()
 								.Append("(timeout) [")
 								.Append(Thread.CurrentThread.ManagedThreadId)
-								.Append("] <color=red>USER drop</color>: ")
-								.Append(key.Key.ShortForm())
+								.Append("] <color=red>USER drop</color> for user id: ")
+								.Append(pair.Value.IdUser.ShortForm())
 								.Log();
 
-							_info.Remove(key.Key, out var info);
+							_info.Remove(pair.Key, out var info);
 							OnUserLost?.Invoke(info.IdUser);
 							updatesCount++;
 						}
@@ -245,12 +245,15 @@ namespace BH.Components
 							{
 								info.Ep = @event.ep;
 								info.Updated = DateTime.UtcNow;
+								info.IdUser = @event.response.Owner.IdUser;
 
 								new StringBuilder()
 									.Append("Q (response) [")
 									.Append(Thread.CurrentThread.ManagedThreadId)
-									.Append("] <color=yellow>SERVER updated</color>: ")
+									.Append("] <color=yellow>SERVER updated</color> for server id: ")
 									.Append(@event.response.IdHost.ShortForm())
+									.Append($" user (remote/server) id: {@event.response.Owner.IdUser.ShortForm()}")
+									.Append($" user (local/client) id: {Singleton<ServiceNetwork>.I.IdCurrentUser.ShortForm()}")
 									.Log();
 
 								OnServerUpdated?.Invoke(@event.response);
@@ -262,13 +265,16 @@ namespace BH.Components
 									{
 										Ep = @event.ep,
 										Updated = DateTime.UtcNow,
+										IdUser = @event.response.Owner.IdUser,
 									});
 
 								new StringBuilder()
 									.Append("R (response) [")
 									.Append(Thread.CurrentThread.ManagedThreadId)
-									.Append("] <color=lime>SERVER found</color>: ")
+									.Append("] <color=lime>SERVER found</color> for server id:")
 									.Append(@event.response.IdHost.ShortForm())
+									.Append($" user (remote/server) id: {@event.response.Owner.IdUser.ShortForm()}")
+									.Append($" user (local/client) id: {Singleton<ServiceNetwork>.I.IdCurrentUser.ShortForm()}")
 									.Log();
 
 								OnServerFound?.Invoke(@event.response);
@@ -276,25 +282,28 @@ namespace BH.Components
 						}
 
 						// all the server machines on client side (only)
-						var keys = _info
+						var pairs = _info
 							.Where(_ => (DateTime.UtcNow - _.Value.Updated).TotalSeconds > ActiveDiscoveryInterval * 2f)
 							.ToArray();
 
-						foreach(var key in keys)
+						foreach(var pair in pairs)
 						{
 							new StringBuilder()
 								.Append("(timeout) [")
 								.Append(Thread.CurrentThread.ManagedThreadId)
-								.Append("] <color=red>SERVER drop</color>: ")
-								.Append(key.Key.ShortForm())
+								.Append("] <color=red>SERVER drop</color> for server id: ")
+								.Append(pair.Key.ShortForm())
+								.Append($" user (remote/server) id: {pair.Value.IdUser.ShortForm()}")
+								.Append($" user (local/client) id: {Singleton<ServiceNetwork>.I.IdCurrentUser.ShortForm()}")
 								.Log();
 
-							_info.Remove(key.Key);
-							OnServerLost?.Invoke(key.Key);
+							_info.Remove(pair.Key);
+							OnServerLost?.Invoke(pair.Key);
 							updatesCount++;
 						}
 
-						if(updatesCount > 0)
+						// client side (changed in interval by user)
+						//if(updatesCount > 0)
 						{
 							_requestCurrent = castClient.BuildState();
 						}
@@ -305,6 +314,16 @@ namespace BH.Components
 					}
 				}
 			}
+		}
+
+		public IPEndPoint GetEpFor(CxId idMachine)
+		{
+			if(_info.TryGetValue(idMachine, out var info))
+			{
+				return info.Ep;
+			}
+
+			throw new Exception($"ep is not found for machine id: {idMachine}");
 		}
 
 		// client side

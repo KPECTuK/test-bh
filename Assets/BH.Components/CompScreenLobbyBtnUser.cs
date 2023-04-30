@@ -8,7 +8,7 @@ namespace BH.Components
 {
 	public sealed class CompScreenLobbyBtnUser : CompScreenLobbyBtnBase
 	{
-		[NonSerialized] public Action<ModelViewUser> OnClick;
+		[NonSerialized] public Action<ModelUser> OnClick;
 
 		public TextMeshProUGUI TextOwner;
 		public TextMeshProUGUI TextHostAt;

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using BH.Model;
 using UnityEngine;
 using UnityEngine.AI;
@@ -59,23 +60,22 @@ namespace BH.Components
 
 		public void SetFeatures(CxId idFeature)
 		{
-			$"pawn feature set: {idFeature}".Log();
-
-			// roughly, now means: game owner
-			if(idFeature.IsEmpty)
+			for(var index = 0; index < Settings.Features.Length; index++)
 			{
-				View.GetComponent<Renderer>().material.color = Settings.Features[0].PawnColor;
-			}
-			else
-			{
-				for(var index = 0; index < Settings.Features.Length; index++)
+				if(Settings.Features[index].IdFeature == idFeature)
 				{
-					if(Settings.Features[index].IdFeature == idFeature)
-					{
-						View.GetComponent<Renderer>().material.color = Settings.Features[index].PawnColor;
-					}
+					View.GetComponent<Renderer>().material.color = Settings.Features[index].PawnColor;
+
+					$"pawn feature set: ( id user : {IdUser.ShortForm()} id feature: {idFeature.ShortForm()} )".Log();
+
+					return;
 				}
 			}
+
+			// View.GetComponent<Renderer>().material.color = Settings.Features[0].PawnColor;
+
+			var builder = new StringBuilder($"pawn feature set fault: ( id user : {IdUser.ShortForm()} id feature: {idFeature.ShortForm()} )");
+			throw new Exception(Singleton<ServicePawns>.I.DumpTo(builder).ToString());
 		}
 
 		#if UNITY_EDITOR

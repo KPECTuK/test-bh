@@ -11,11 +11,11 @@ namespace BH.Components
 		// TODO: synchronize GetRecentForHost()
 
 		public static int GetRecentForHost(
-			this ListRef<ModelViewUser> source,
+			this ListRef<ModelUser> source,
 			CxId[] into,
 			CxId idHost)
 		{
-			var models = new ModelViewUser[into.Length];
+			var models = new ModelUser[into.Length];
 			var size = source.Count;
 			for(var index = 0; index < size; index++)
 			{
@@ -69,7 +69,7 @@ namespace BH.Components
 		}
 
 		public static unsafe int GetRecentForHost(
-			this ListRef<ModelViewUser> source,
+			this ListRef<ModelUser> source,
 			CxId* intoPtr,
 			int numElementsInto,
 			CxId idHost)
@@ -90,8 +90,8 @@ namespace BH.Components
 
 		public static CmdViewLobbyClear BuildForAllExceptSelf(
 			this CmdViewLobbyClear target,
-			ListRef<ModelViewServer> modelsServer,
-			ListRef<ModelViewUser> modelsUser)
+			ListRef<ModelServer> modelsServer,
+			ListRef<ModelUser> modelsUser)
 		{
 			var sizeServers = modelsServer.Count;
 			for(var index = 0; index < sizeServers; index++)
@@ -120,8 +120,8 @@ namespace BH.Components
 
 		public static CmdViewLobbyClear BuildForAll(
 			this CmdViewLobbyClear target,
-			ListRef<ModelViewServer> modelsServer,
-			ListRef<ModelViewUser> modelsUser)
+			ListRef<ModelServer> modelsServer,
+			ListRef<ModelUser> modelsUser)
 		{
 			var sizeServers = modelsServer.Count;
 			for(var index = 0; index < sizeServers; index++)
@@ -160,7 +160,7 @@ namespace BH.Components
 				return false;
 			}
 
-			var modelServer = ModelViewServer.Create(desc);
+			var modelServer = ModelServer.Create(desc);
 
 			Singleton<ServiceUI>.I.ModelsServer.Add(modelServer);
 			Singleton<ServiceUI>.I.ModelsServer.ToText($"append <b><color=white>(server)</color></b>: {modelServer}").Log();
@@ -172,7 +172,7 @@ namespace BH.Components
 		/// <summary>
 		/// returns operation result, id is returning always
 		/// </summary>
-		public static bool TryAppendUser(ref DataUser data, CxId idHostInitiator, out CxId idUser)
+		public static bool TryAppendUser(ref DataUser data, out CxId idUser)
 		{
 			//! for client cant be empty or current machine id
 			//! idHostInitiator is to update idFeature from server, bound by model (selected one)
@@ -197,7 +197,7 @@ namespace BH.Components
 				return false;
 			}
 
-			var modelUser = ModelViewUser.Create(data);
+			var modelUser = ModelUser.Create(data);
 
 			Singleton<ServiceUI>.I.ModelsUser.Add(modelUser);
 			Singleton<ServiceUI>.I.ModelsUser.ToText($"append <b><color=white>(user)</color></b>: {modelUser}").Log();
@@ -249,48 +249,6 @@ namespace BH.Components
 			return contains;
 		}
 
-		public static void TryRemoveUsersByHost(CxId idServer, bool isRemoveSelf = false)
-		{
-			var idUserCurrent = Singleton<ServiceNetwork>.I.IdCurrentUser;
-			var set = Singleton<ServiceUI>.I.ModelsUser;
-			var setSize = set.Count;
-			for(var count = 0; count < setSize; count++)
-			{
-				var modelUser = set.Dequeue(out var contains);
-
-				if(modelUser.IdUser == idUserCurrent && !isRemoveSelf)
-				{
-					set.Enqueue(modelUser);
-
-					if(!modelUser.IdHostAt.IsEmpty)
-					{
-						//! TODO: to generalized routine
-						modelUser.IdHostAt = CxId.Empty;
-						Singleton<ServiceUI>.I.Events.Enqueue(new CmdViewLobbyUserUpdate { IdUser = modelUser.IdUser });
-						Singleton<ServiceUI>.I.ModelsUser.ToText($"update <b><color=white>(user)</color></b>: {modelUser})").Log();
-					}
-
-					continue;
-				}
-
-				if(modelUser.IdHostAt != idServer)
-				{
-					set.Enqueue(modelUser);
-
-					continue;
-				}
-
-				Singleton<ServiceUI>.I.Events.Enqueue(new CmdViewLobbyUserRemove { IdUser = modelUser.IdUser });
-				Singleton<ServiceUI>.I.ModelsUser.ToText($"remove batch <b><color=white>(user)</color></b>: {modelUser}").Log();
-				Singleton<ServicePawns>.I.ReleaseFeature(modelUser.IdUser);
-			}
-
-			if(setSize > 0)
-			{
-				Singleton<ServiceUI>.I.ModelsUser.DeFragment();
-			}
-		}
-
 		/// <summary>
 		/// returns operation result, id is not a default if data has changed
 		/// </summary>
@@ -323,7 +281,7 @@ namespace BH.Components
 		/// <summary>
 		/// returns operation result, id is not a default if data has changed
 		/// </summary>
-		public static bool TryUpdateUser(ref DataUser data, CxId idHostInitiator, out CxId idUser)
+		public static bool TryUpdateUser(ref DataUser data, out CxId idUser)
 		{
 			//! for client cant be empty or current machine id
 			//! idHostInitiator is to update idFeature from server, bound by model (selected one)
@@ -365,8 +323,11 @@ namespace BH.Components
 		{
 			var notionContext = context?.GetType().NameNice() ?? "undefined";
 
-			while(source.TryPeek(out var @event))
+			// prevent execution of next command batch
+			var size = source.Count;
+			while(size > 0 && source.TryPeek(out var @event))
 			{
+				//size--;
 				try
 				{
 					var notionEvent = @event?.GetType().NameNice() ?? "undefined";

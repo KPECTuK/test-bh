@@ -10,9 +10,6 @@ namespace BH.Components
 	[RequireComponent(typeof(RectTransform))]
 	public class CompScreenLobbyCtrlBar : MonoBehaviour, IWidgetController
 	{
-		//? bar is focused on users (? observer switchable)
-		// TODO: TL; TI; use view modes to display server modes, so can get rid of commands from ServiceNetwork
-
 		[Range(0f, 3f)] public float ButtonSpeedSlideSec = 1f;
 		[Range(0f, 1f)] public float ButtonSpeedScaleSec = .2f;
 
@@ -74,13 +71,15 @@ namespace BH.Components
 			_buttons.Add(component);
 		}
 
-		public IEnumerator TaskAppendButtonServer(CxId idModel)
+		// TODO: same as user: AppendOrUpdate
+		public IEnumerator TaskButtonAppendServer(CxId idModel)
 		{
 			var load = Singleton<ServiceResources>.I.LoadAssetAsLibrary<CompScreenLobbyBtnServer>(
 				ServiceResources.ID_RESOURCE_UI_LOBBY_ITEM_SERVER_S,
 				transform,
 				CxOrigin.Identity);
 
+			load.name = $"{load.name.CleanUpName()}_{idModel.ShortForm()}";
 			load.IdModel = idModel;
 			ButtonWidgetInit(load);
 			load.OnClick = OnButtonItemServer;
@@ -88,7 +87,7 @@ namespace BH.Components
 			yield break;
 		}
 
-		public IEnumerator TaskAppendOrUpdateButtonUser(CxId idModel)
+		public IEnumerator TaskButtonAppendOrUpdateUser(CxId idModel)
 		{
 			var instance = _buttons.Find(_ => _.IdModel == idModel);
 			if(instance is CompScreenLobbyBtnUser cast)
@@ -102,6 +101,7 @@ namespace BH.Components
 					transform,
 					new CxOrigin());
 
+				load.name = $"{load.name.CleanUpName()}_{idModel.ShortForm()}";
 				load.IdModel = idModel;
 				ButtonWidgetInit(load);
 				load.OnClick = OnButtonItem;
@@ -110,7 +110,7 @@ namespace BH.Components
 			yield break;
 		}
 
-		public IEnumerator TaskUpdateButton(CxId idModel)
+		public IEnumerator TaskButtonUpdate(CxId idModel)
 		{
 			var button = _buttons.Find(_ => _.IdModel == idModel);
 			if(button != null)
@@ -128,7 +128,7 @@ namespace BH.Components
 			yield break;
 		}
 
-		public IEnumerator TaskRemoveButton(CxId idModel)
+		public IEnumerator TaskButtonRemove(CxId idModel)
 		{
 			var button = _buttons.Find(_ => _.IdModel == idModel);
 			if(button != null)
@@ -158,7 +158,7 @@ namespace BH.Components
 			}
 		}
 
-		public IEnumerator TaskUpdateFocus()
+		public IEnumerator TaskFocusUpdate()
 		{
 			for(var index = 0; index < _buttons.Count; index++)
 			{
@@ -179,14 +179,18 @@ namespace BH.Components
 				throw new Exception($"can't find local user with id: {idServer.ShortForm()}");
 			}
 
+			//TODO: remove direct assignment using command
+			// update request force by command: updates every Update() call now
 			if(modelUser.IdHostAt == idServer)
 			{
-				return;
+				modelUser.IdHostAt = CxId.Empty;
+				Scheduler.PassThrough.Schedule(TaskFocusUpdate);
 			}
-
-			//TODO: the only place where user desc data is not sufficient: remove direct assignment using command
-			modelUser.IdHostAt = idServer;
-			Scheduler.PassThrough.Schedule(TaskUpdateFocus);
+			else
+			{
+				modelUser.IdHostAt = idServer;
+				Scheduler.PassThrough.Schedule(TaskFocusUpdate);
+			}
 
 			Singleton<ServicePawns>.I.Events.Enqueue(
 				new CmdPawnLobbySetChangeTo
@@ -195,13 +199,14 @@ namespace BH.Components
 				});
 		}
 
-		private void OnButtonItem(ModelViewUser model)
+		private void OnButtonItem(ModelUser model)
 		{
 			"press: 'User'".Log();
 
 			// TODO: remove user from participants
 		}
 
+		// deprecated
 		public IEnumerable<CxId> GetButtons()
 		{
 			return _buttons.Select(_ => _.IdModel);

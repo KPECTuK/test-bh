@@ -81,6 +81,8 @@ namespace BH.Components
 
 			_textButtonOwn = ButtonOwn.transform.GetComponentInChildren<TextMeshProUGUI>();
 			_textButtonReady = ButtonReady.transform.GetComponentInChildren<TextMeshProUGUI>();
+
+			SetScheduler<SchedulerTaskModelUser>();
 		}
 
 		private void Update()
@@ -159,10 +161,10 @@ namespace BH.Components
 				throw new Exception("not contains");
 			}
 
-			var desc = model.Data;
+			var desc = model.CreateData;
 			desc.IsReady = !desc.IsReady;
 
-			if(ExtensionsView.TryUpdateUser(ref desc, Singleton<ServiceNetwork>.I.IdCurrentMachine, out idUser))
+			if(ExtensionsView.TryUpdateUser(ref desc, out idUser))
 			{
 				Singleton<ServiceUI>.I.Events.Enqueue(
 					new CmdViewLobbyUserUpdate

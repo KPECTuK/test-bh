@@ -5,7 +5,7 @@ namespace BH.Components
 {
 	public sealed class BuilderPawnLocal : IBuilderAsset<CompPawn>
 	{
-		public CompPawn Build(Transform parent, CxOrigin origin, ModelViewUser model)
+		public CompPawn Build(Transform parent, CxOrigin origin, ModelUser model)
 		{
 			var result = Singleton<ServiceResources>.I.LoadAssetAsResources<CompPawn>(
 				ServiceResources.ID_RESOURCE_PAWN_LOCAL_S,

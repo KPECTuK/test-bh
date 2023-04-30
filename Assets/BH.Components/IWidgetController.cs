@@ -106,7 +106,7 @@ namespace BH.Components
 			if(contains && aligned)
 			{
 				var name = taskFactory.Method.Name;
-				$"run task '{name}' by scheduler '{GetType().NameNice()}' for '{idOver.ShortForm()}'".Log();
+				$"schedule task '{name}' by scheduler '{GetType().NameNice()}' for '{idOver.ShortForm()}'".Log();
 
 				QueueTasks.Enqueue(taskFactory.Invoke(idOver));
 			}
@@ -149,7 +149,7 @@ namespace BH.Components
 			if(contains)
 			{
 				var name = taskFactory.Method.Name;
-				$"run task '{name}' by scheduler '{GetType().NameNice()}' for '{idOver.ShortForm()}'".Log();
+				$"schedule task '{name}' by scheduler '{GetType().NameNice()}' for '{idOver.ShortForm()}'".Log();
 
 				QueueTasks.Enqueue(taskFactory.Invoke(idOver));
 			}
@@ -172,7 +172,7 @@ namespace BH.Components
 		public void Schedule(Func<IEnumerator> taskFactory)
 		{
 			var name = taskFactory.Method.Name;
-			$"run task '{name}' by scheduler '{GetType().NameNice()}'".Log();
+			$"schedule task '{name}' by scheduler '{GetType().NameNice()}'".Log();
 
 			QueueTasks.Enqueue(taskFactory.Invoke());
 		}
@@ -180,7 +180,7 @@ namespace BH.Components
 		public void Schedule<T>(T idOver, Func<T, IEnumerator> taskFactory)
 		{
 			var name = taskFactory.Method.Name;
-			$"run task '{name}' by scheduler '{GetType().NameNice()}' for context '{idOver}'".Log();
+			$"schedule task '{name}' by scheduler '{GetType().NameNice()}' for context '{idOver}'".Log();
 
 			QueueTasks.Enqueue(taskFactory.Invoke(idOver));
 		}

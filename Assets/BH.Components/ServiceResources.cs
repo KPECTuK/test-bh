@@ -38,7 +38,7 @@ namespace BH.Components
 			"initialized: resources".Log();
 		}
 
-		public CompPawn BuildPawn<T>(Transform parent, CxOrigin origin, ModelViewUser model) where T : class, IBuilderAsset<CompPawn>
+		public CompPawn BuildPawn<T>(Transform parent, CxOrigin origin, ModelUser model) where T : class, IBuilderAsset<CompPawn>
 		{
 			for(var index = 0; index < _factoryBuilderAsset.Length; index++)
 			{

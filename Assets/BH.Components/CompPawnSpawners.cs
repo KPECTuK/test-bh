@@ -15,13 +15,19 @@ namespace BH.Components
 
 		private readonly Queue<IEnumerator> _tasks = new();
 
-		public void Schedule(IEnumerator task)
+		private IScheduler _scheduler;
+
+		public IScheduler Scheduler => _scheduler ?? new SchedulerTaskDefault();
+
+		public void SetScheduler<T>() where T : IScheduler, new()
 		{
-			_tasks.Enqueue(task);
+			_scheduler = _tasks.BuildScheduler<T>();
 		}
 
 		private void Awake()
 		{
+			SetScheduler<SchedulerTaskAll>();
+
 			var buffer = new List<Transform>();
 			foreach(var component in GetComponentsInChildren<Transform>())
 			{
@@ -69,7 +75,7 @@ namespace BH.Components
 
 				if(isFree)
 				{
-					_pawns.ToText($"spawn point found: {locator.position}, in pawns collection").Log();
+					_pawns.ToText($"pawn spawn point found: {locator.position}, in pawns collection").Log();
 
 					return locator.position;
 				}
@@ -93,51 +99,61 @@ namespace BH.Components
 			return null;
 		}
 
-		public IEnumerator TaskDestroy(CxId idUser)
+		public IEnumerator TaskPawnRemove(CxId idUser)
 		{
 			var instance = GetPawnBy(idUser);
 			if(instance == null)
 			{
-				throw new Exception($"can't find pawn for user id: {idUser}");
+				throw new Exception(_pawns.ToText($"can't find pawn instance for user id: {idUser} in"));
 			}
 
 			_pawns.Remove(instance);
 			instance.Builder.Destroy(instance);
 
-			$"pawn for [{idUser}] had been destroyed".Log();
+			$"pawn for user id: {idUser.ShortForm()} had been destroyed".Log();
 
 			yield break;
 		}
 
-		public IEnumerator TaskSpawnForLobby(CxId idUser)
+		public IEnumerator TaskPawnAppendOrUpdateLobby(CxId idUser)
 		{
-			var positionSpawn = FindSpawnPoint();
-			var orientationSpawn = Quaternion.LookRotation(-positionSpawn.normalized, Vector3.up);
-			var model = Singleton<ServiceUI>.I.ModelsUser.Get(idUser, out var contains);
-
+			var modeUser = Singleton<ServiceUI>.I.ModelsUser.Get(idUser, out var contains);
 			if(!contains)
 			{
-				throw new Exception($"can't find model for user id: {idUser}");
+				throw new Exception($"cant find pawn model for user id: {idUser.ShortForm()}");
 			}
 
-			// yield to load
-			var instance = Singleton<ServiceResources>.I
-				.BuildPawn<BuilderPawnLobby>(
-					null,
-					new CxOrigin
-					{
-						Location = positionSpawn,
-						Orientation = orientationSpawn,
-					},
-					model);
-			_pawns.Add(instance);
+			var instance = _pawns.Find(_ => _.IdUser == idUser);
+			if(instance != null)
+			{
+				instance.SetFeatures(modeUser.IdFeature);
 
-			$"pawn for [{model.IdUser}] created at: {positionSpawn}".Log();
+				$"pawn for user id: {idUser.ShortForm()} had been updated".Log();
+			}
+			else
+			{
+				var positionSpawn = FindSpawnPoint();
+				var orientationSpawn = Quaternion.LookRotation(-positionSpawn.normalized, Vector3.up);
+
+				// yield to load
+				instance = Singleton<ServiceResources>.I
+					.BuildPawn<BuilderPawnLobby>(
+						null,
+						new CxOrigin
+						{
+							Location = positionSpawn,
+							Orientation = orientationSpawn,
+						},
+						modeUser);
+				_pawns.Add(instance);
+
+				$"pawn for user id: {modeUser.IdUser.ShortForm()} had been created at: {positionSpawn}".Log();
+			}
 
 			yield break;
 		}
 
-		public IEnumerator TaskSpawnForGame()
+		public IEnumerator TaskPawnAppendGame()
 		{
 			yield break;
 		}

@@ -108,18 +108,18 @@ namespace BH.Tests
 		[Test]
 		public void BAA_TestGetRecent()
 		{
-			var source = new ListRef<ModelViewUser>();
-			source.Add(new ModelViewUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:1")});
-			source.Add(new ModelViewUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:7")});
-			source.Add(new ModelViewUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:3")});
-			source.Add(new ModelViewUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:2")});
-			source.Add(new ModelViewUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:6")});
-			source.Add(new ModelViewUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:4")});
-			source.Add(new ModelViewUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:5")});
-			source.Add(new ModelViewUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:1")});
+			var source = new ListRef<ModelUser>();
+			source.Add(new ModelUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:1")});
+			source.Add(new ModelUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:7")});
+			source.Add(new ModelUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:3")});
+			source.Add(new ModelUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:2")});
+			source.Add(new ModelUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:6")});
+			source.Add(new ModelUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:4")});
+			source.Add(new ModelUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:5")});
+			source.Add(new ModelUser { IdUser = CxId.Create(), TimestampDiscovery = DateTime.Parse("01/01/2000 0:0:1")});
 
 			// ReSharper disable once InconsistentNaming
-			static bool isUnique(CxId[] set, ListRef<ModelViewUser> data)
+			static bool isUnique(CxId[] set, ListRef<ModelUser> data)
 			{
 				// uniqueness
 				for(var indexOuter = 0; indexOuter < set.Length; indexOuter++)
@@ -141,7 +141,7 @@ namespace BH.Tests
 				return true;
 			}
 
-			static bool isOrdered(CxId[] set, ListRef<ModelViewUser> data)
+			static bool isOrdered(CxId[] set, ListRef<ModelUser> data)
 			{
 				// ordered
 				var result = true;

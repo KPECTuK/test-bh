@@ -3,7 +3,7 @@ using BH.Model;
 
 namespace BH.Components
 {
-	public struct ModelViewUser : IEquatable<CxId>
+	public struct ModelUser : IEquatable<CxId>
 	{
 		/// <summary> immutable </summary>
 		public CxId IdUser;
@@ -15,10 +15,11 @@ namespace BH.Components
 		/// </summary>
 		public CxId IdHostAt;
 		public bool IsReady;
+		public bool IsNotifiedStartGame;
 
 		public CxId IdCamera;
 
-		public DataUser Data =>
+		public DataUser CreateData =>
 			new()
 			{
 				IdUser = IdUser,
@@ -35,7 +36,7 @@ namespace BH.Components
 		public string RenderIdHostAt => IdHostAt.ShortForm(false);
 		public string RenderIdUser => IdUser.ShortForm(false);
 
-		public static ModelViewUser Create(DataUser data)
+		public static ModelUser Create(DataUser data)
 		{
 			return new()
 			{
@@ -60,7 +61,7 @@ namespace BH.Components
 
 		public override bool Equals(object @object)
 		{
-			return @object is ModelViewUser other && Equals(other.IdUser);
+			return @object is ModelUser other && Equals(other.IdUser);
 		}
 
 		public override int GetHashCode()
@@ -76,6 +77,7 @@ namespace BH.Components
 				throw new Exception($"trying to update a user with another id: ( input: {data.IdUser} over: {IdUser} )");
 			}
 
+			// server authority
 			if(IdFeature != data.IdFeature)
 			{
 				result = true;
@@ -83,6 +85,7 @@ namespace BH.Components
 				IdFeature = data.IdFeature;
 			}
 
+			// local (not a client or server only) authority
 			if(IdHostAt != data.IdHostAt)
 			{
 				result = true;
@@ -90,6 +93,7 @@ namespace BH.Components
 				IdHostAt = data.IdHostAt;
 			}
 
+			// local (not a client or server only) authority
 			if(IsReady != data.IsReady)
 			{
 				result = true;

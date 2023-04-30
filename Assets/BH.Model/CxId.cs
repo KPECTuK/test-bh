@@ -10,11 +10,11 @@ namespace BH.Model
 	[Serializable]
 	public unsafe struct CxId : IEquatable<CxId>
 	{
-		public const int SIZE_I = 16;
+		public const int SIZE_I = 16 + sizeof(int);
 
 		// ReSharper disable once Unity.RedundantSerializeFieldAttribute
 		[SerializeField]
-		[FieldOffset(00)] private fixed byte _id[SIZE_I];
+		[FieldOffset(00)] private fixed byte _id[16];
 		[FieldOffset(00)] private byte _00;
 		[FieldOffset(01)] private byte _01;
 		[FieldOffset(02)] private byte _02;
@@ -32,7 +32,7 @@ namespace BH.Model
 		[FieldOffset(14)] private byte _14;
 		[FieldOffset(15)] private byte _15;
 		/// <summary> immutable </summary>
-		[FieldOffset(SIZE_I)] private int _hash;
+		[FieldOffset(16)] private int _hash;
 
 		public bool IsEmpty => Compare(ref this, ref Empty);
 
@@ -141,13 +141,13 @@ namespace BH.Model
 
 		public static void Writer(NetworkWriter target, CxId source)
 		{
-			target.WriteBytes(source._id, 0, SIZE_I);
+			target.WriteBytes(source._id, 0, 16);
 		}
 
 		public static CxId Reader(NetworkReader source)
 		{
 			CxId target = default;
-			var segment = source.ReadBytesSegment(SIZE_I);
+			var segment = source.ReadBytesSegment(16);
 
 			if(segment.Array == null)
 			{

@@ -4,7 +4,7 @@ using BH.Model;
 
 namespace BH.Components
 {
-	public struct ModelViewServer : IEquatable<CxId>
+	public struct ModelServer : IEquatable<CxId>
 	{
 		/// <summary> immutable </summary>
 		public CxId IdHost;
@@ -17,7 +17,7 @@ namespace BH.Components
 
 		public bool IsEmpty => IdHost.IsEmpty;
 
-		public static ModelViewServer Create(Response data)
+		public static ModelServer Create(Response data)
 		{
 			return new()
 			{
@@ -39,7 +39,7 @@ namespace BH.Components
 
 		public override bool Equals(object @object)
 		{
-			return @object is ModelViewServer other && Equals(other.IdHost);
+			return @object is ModelServer other && Equals(other.IdHost);
 		}
 
 		public override int GetHashCode()
