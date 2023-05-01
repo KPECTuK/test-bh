@@ -131,7 +131,7 @@ namespace BH.Components
 			// not selected
 			if(!modelUser.IdHostAt.IsEmpty)
 			{
-				Manager.networkAddress = Discovery.GetEpFor(modelUser.IdHostAt).ToString();
+				Manager.networkAddress = Discovery.GetEpFor(modelUser.IdHostAt).Address.ToString();
 			}
 
 			// sets states as a result for next mode (game) - not good but MVP
@@ -626,7 +626,7 @@ namespace BH.Components
 				.Find(_ => _.IdUser == Singleton<ServiceNetwork>.I.IdCurrentUser, out var contains)
 				.IdHostAt;
 
-		public void Enable()
+		public unsafe void Enable()
 		{
 			Singleton<ServiceUI>.I.Events.Enqueue(
 				new CmdViewScreenChange
@@ -634,16 +634,28 @@ namespace BH.Components
 					NameScreen = ServiceUI.SCREEN_GAME_S,
 				});
 
-			// remove all pawns for lobby
-			// create all pawns for game
-			// set spectator for local
+			var modelUserCurrent = Singleton<ServiceUI>.I.ModelsUser.Get(Singleton<ServiceNetwork>.I.IdCurrentUser, out var contains);
+			var idsRecentPtr = stackalloc CxId[ServicePawns.MAX_NUMBER_OR_PLAYERS_I];
+			var numPlayers = Singleton<ServiceUI>.I.ModelsUser.GetRecentForHost(
+				idsRecentPtr,
+				ServicePawns.MAX_NUMBER_OR_PLAYERS_I,
+				modelUserCurrent.IdHostAt);
 
-			//Manager.StartClient();
+			for(var index = 0; index < numPlayers; index++)
+			{
+				Singleton<ServicePawns>.I.Events.Enqueue(
+					new CmdPawnDestroy
+					{
+						IdUser = idsRecentPtr[index],
+					});
+			}
+
+			Manager.StartClient();
 		}
 
 		public void Disable()
 		{
-			//Manager.StopClient();
+			Manager.StopClient();
 		}
 	}
 
@@ -654,7 +666,7 @@ namespace BH.Components
 
 		public CxId IdServerCurrent => Singleton<ServiceNetwork>.I.IdCurrentMachine;
 
-		public void Enable()
+		public unsafe void Enable()
 		{
 			Singleton<ServiceUI>.I.Events.Enqueue(
 				new CmdViewScreenChange
@@ -662,16 +674,28 @@ namespace BH.Components
 					NameScreen = ServiceUI.SCREEN_GAME_S,
 				});
 
-			// remove all pawns for lobby
-			// create all pawns for game
-			// set spectator for local
+			var modelUserCurrent = Singleton<ServiceUI>.I.ModelsUser.Get(Singleton<ServiceNetwork>.I.IdCurrentUser, out var contains);
+			var idsRecentPtr = stackalloc CxId[ServicePawns.MAX_NUMBER_OR_PLAYERS_I];
+			var numPlayers = Singleton<ServiceUI>.I.ModelsUser.GetRecentForHost(
+				idsRecentPtr,
+				ServicePawns.MAX_NUMBER_OR_PLAYERS_I,
+				modelUserCurrent.IdHostAt);
 
-			//Manager.StartHost();
+			for(var index = 0; index < numPlayers; index++)
+			{
+				Singleton<ServicePawns>.I.Events.Enqueue(
+					new CmdPawnDestroy
+					{
+						IdUser = idsRecentPtr[index],
+					});
+			}
+
+			Manager.StartHost();
 		}
 
 		public void Disable()
 		{
-			//Manager.StopHost();
+			Manager.StopHost();
 		}
 	}
 

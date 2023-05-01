@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using BH.Model;
+using Mirror;
 using UnityEngine;
 
 namespace BH.Components
@@ -48,6 +49,16 @@ namespace BH.Components
 			Singleton<ServicePawns>.I.Events.TryExecuteCommandQueue(this);
 		}
 
+		//private GameObject SpawnHandler(SpawnMessage msg)
+		//{
+
+		//}
+
+		//private void UnspawnHandler(GameObject spawned)
+		//{
+
+		//}
+
 		private Vector3 FindSpawnPoint()
 		{
 			for(var indexLocator = 0; indexLocator < _locators.Length; indexLocator++)
@@ -63,13 +74,14 @@ namespace BH.Components
 						throw new Exception("pawn position is out of area");
 					}
 
-					if(instance.Agent.Raycast(locator.position, out var hitLocator))
-					{
-						throw new Exception("spawn position is out of area");
-					}
+					//if(instance.Agent.Raycast(locator.position, out var hitLocator))
+					//{
+					//	throw new Exception("spawn position is out of area");
+					//}
 
 					const float DOUBLE_PAWN_RADIUS_F = 1f;
-					var distance = (hitLocator.position - hitPawn.position).magnitude;
+					//var distance = (hitLocator.position - hitPawn.position).magnitude;
+					var distance = (locator.position - hitPawn.position).magnitude;
 					isFree = isFree && distance > DOUBLE_PAWN_RADIUS_F;
 				}
 
@@ -153,8 +165,44 @@ namespace BH.Components
 			yield break;
 		}
 
-		public IEnumerator TaskPawnAppendGame()
+		public IEnumerator TaskPawnAppendGame(CxId idUser)
 		{
+			// TODO: sync position
+			var positionSpawn = FindSpawnPoint();
+			var orientationSpawn = Quaternion.LookRotation(-positionSpawn.normalized, Vector3.up);
+			var modeUser = Singleton<ServiceUI>.I.ModelsUser.Get(idUser, out var contains);
+
+			if(idUser == Singleton<ServiceNetwork>.I.IdCurrentUser)
+			{
+				var instance = Singleton<ServiceResources>.I
+					.BuildPawn<BuilderPawnLocal>(
+						null,
+						new CxOrigin
+						{
+							Location = positionSpawn,
+							Orientation = orientationSpawn,
+						},
+						modeUser);
+				_pawns.Add(instance);
+
+				$"pawn for user id (local): {modeUser.IdUser.ShortForm()} had been created at: {positionSpawn}".Log();
+			}
+			else
+			{
+				var instance = Singleton<ServiceResources>.I
+					.BuildPawn<BuilderPawnRemote>(
+						null,
+						new CxOrigin
+						{
+							Location = positionSpawn,
+							Orientation = orientationSpawn,
+						},
+						modeUser);
+				_pawns.Add(instance);
+
+				$"pawn for user id (remote): {modeUser.IdUser.ShortForm()} had been created at: {positionSpawn}".Log();
+			}
+			
 			yield break;
 		}
 	}

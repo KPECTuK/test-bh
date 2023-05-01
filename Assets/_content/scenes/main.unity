@@ -1371,6 +1371,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2f1a3f48621e2e147ae01404f3db608c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  IsGameStart: 0
 --- !u!114 &1030506695
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1421,8 +1422,8 @@ MonoBehaviour:
   networkAddress: localhost
   maxConnections: 4
   authenticator: {fileID: 0}
-  playerPrefab: {fileID: 0}
-  autoCreatePlayer: 1
+  playerPrefab: {fileID: 6668530206072252172, guid: 37411f09cf84d6d499bd7a829e02f0f7, type: 3}
+  autoCreatePlayer: 0
   playerSpawnMethod: 0
   spawnPrefabs: []
   timeInterpolationGui: 0

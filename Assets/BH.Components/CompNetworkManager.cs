@@ -1,4 +1,6 @@
+using BH.Model;
 using Mirror;
+using UnityEngine;
 
 namespace BH.Components
 {
@@ -73,7 +75,10 @@ namespace BH.Components
 
 		// Server System Callbacks
 
-		public override void OnServerConnect(NetworkConnectionToClient conn) { }
+		public override void OnServerConnect(NetworkConnectionToClient conn)
+		{
+			"server connected".Log();
+		}
 
 		public override void OnServerReady(NetworkConnectionToClient conn)
 		{
@@ -97,6 +102,8 @@ namespace BH.Components
 		public override void OnClientConnect()
 		{
 			base.OnClientConnect();
+
+			"client connected".Log();
 		}
 
 		public override void OnClientDisconnect() { }

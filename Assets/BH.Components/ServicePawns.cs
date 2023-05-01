@@ -338,6 +338,28 @@ namespace BH.Components
 		}
 	}
 
+	public sealed class CmdPawnAppendGame : ICommand<CompPawnSpawners>
+	{
+		public CxId IdUser;
+
+		public bool Assert(CompPawnSpawners context)
+		{
+			if(IdUser.IsEmpty)
+			{
+				"pawn create conditions: user id is empty".LogWarning();
+
+				return false;
+			}
+
+			return true;
+		}
+
+		public void Execute(CompPawnSpawners context)
+		{
+			context.Scheduler.Schedule(IdUser, context.TaskPawnAppendGame);
+		}
+	}
+
 	public sealed class CmdPawnDestroy : ICommand<CompPawnSpawners>
 	{
 		public CxId IdUser;
